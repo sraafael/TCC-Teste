@@ -1,0 +1,60 @@
+<!--
+  Arquivo: back-end/templates/alunos.html
+  Area: Back-end Flask
+  Funcao: Arquivo de suporte do projeto.
+  Onde fica: /back-end/templates/alunos.html
+-->
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Tabela renderizada no servidor e populada via fetch na carga da pagina. -->
+<div class="container mt-4">
+    <h2>Lista de Alunos</h2>
+    <input type="text" id="search" placeholder="Buscar alunos..." class="form-control mb-3">
+    
+    <table class="table table-striped table-bordered">
+        <thead class="thead-dark">
+            <tr>
+                <th>ID</th>
+                <th>Nome</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody id="alunoList">
+            </tbody>
+    </table>
+</div>
+
+<script>
+    // Busca alunos da API e reconstrói o tbody com os dados mais recentes.
+    function carregarAlunos() {
+        fetch('/alunos')
+            .then(res => res.json())
+            .then(data => {
+                const tbody = document.getElementById('alunoList');
+                tbody.innerHTML = ''; // Limpa a tabela
+                data.forEach(aluno => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${aluno.id}</td>
+                            <td>${aluno.nome}</td>
+                            <td>
+                                <button class="btn btn-sm btn-danger" onclick="deletarAluno(${aluno.id})">Remover</button>
+                            </td>
+                        </tr>`;
+                });
+            });
+    }
+
+    // Chama endpoint de exclusao e recarrega a listagem ao concluir.
+    function deletarAluno(id) {
+        if(confirm("Deseja realmente remover?")) {
+            fetch(`/alunos/${id}`, { method: 'DELETE' })
+                .then(() => carregarAlunos());
+        }
+    }
+
+    // Inicializa a carga
+    document.addEventListener('DOMContentLoaded', carregarAlunos);
+</script>
+{% endblock %}

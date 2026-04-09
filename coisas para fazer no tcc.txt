@@ -1,0 +1,29 @@
+coisas para fazer no tcc
+
+1 colocar o cpf no lugar do RA (Feito)
+2 fazer o botão de esqueceu a senha para funcionar, quando um usuário colocar o cpf e apertar o botão para redefinir automaticamente envia um e-mail e uma mensagem no whatzapp da pessoa com um código para atualizar a senha (Feito)
+3 quando cadastrar um aluno todos os campos tem que ser obrigatórios (Feito)
+4 quando cadastrar um aluno colocar no banco de dados (Feito)
+5 tirar os alunos e os professores ja pre colocados (Feito)
+6 no perfil do professor fazer o botão de editar informações funcionar 
+7 colocar o um novo botao para aprovar ferias, reprovar, realocar ferias e dar ferias
+8 quando for cadastrar um novo professor, tem que dar para colocar mais especialidade e todas as informaçoes são obrigatorias
+9 financeiro quero um extrato de tudo de receita e despesa
+10 na agenda quero que quando eu clicar em uma turma tem que vim as informaçoes sobre a turma 'qual sala estao, qual professsor, quantos alunos, quais alunos entre outras coisas
+11 botao de editar no planos da academia e o de remover
+12 quando colocar o preço quando criar um plano ja coloca a ,00 automaticamente, os beneficios quero uma caixa para so marcar qual beneficio o plano vai utilizar e colocar o botao de criar plano para funcionar e salvar no banco de dados
+13 atualizar os alertas e pendencias
+14 no painel do professor criar aba para criar novos treinos 
+15 botão para tirar ferias 
+16 botao na admistração para realocar alunos 
+17 um menu melhor para a conquistas, meta semanal 
+18 trocar planos, quando o plano antigo vencer e quando o pagamento for aprovado 
+19 melhorar o ver exercicios 
+20 atualizar a carga 
+21 fazer a integração completa com o banco de dados 
+22 fazer todos os teste 
+23 subir em um servidor externo 
+24 fazer melhorias 
+25 validação para entrar na adminstração, professor, aluno
+26 botão dark mode ou litgh mode
+

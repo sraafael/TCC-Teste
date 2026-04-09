@@ -1,0 +1,39 @@
+<!--
+  Arquivo: back-end/templates/dashboard.html
+  Area: Back-end Flask
+  Funcao: Arquivo de suporte do projeto.
+  Onde fica: /back-end/templates/dashboard.html
+-->
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Blocos de resumo: valores preenchidos dinamicamente pelo script abaixo. -->
+<div class="container mt-4">
+    <h1 class="mb-4">Dashboard - Studio Bio Fitness</h1>
+    <div class="row">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white p-3">
+                <h2>Total Alunos</h2>
+                <p id="total-alunos" class="display-4">0</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white p-3">
+                <h2>Total Planos</h2>
+                <p id="total-planos" class="display-4">0</p>
+            </div>
+        </div>
+        </div>
+</div>
+
+<script>
+    // Ao carregar a pagina, consulta /api/stats e injeta os totais nos cards.
+    fetch('/api/stats')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('total-alunos').innerText = data.total_alunos;
+            document.getElementById('total-planos').innerText = data.total_planos;
+        })
+        .catch(err => console.error("Erro ao carregar dashboard:", err));
+</script>
+{% endblock %}
