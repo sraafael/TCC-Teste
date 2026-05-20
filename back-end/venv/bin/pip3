@@ -1,5 +1,5 @@
 #!/bin/sh
-'''exec' "/home/rafael-bavaresco/Área de trabalho/TCC/back-end/venv/bin/python3" "$0" "$@"
+'''exec' "/home/rafael-bavaresco/Área de trabalho/TCC-Teste/back-end/venv/bin/python3" "$0" "$@"
 ' '''
 # -*- coding: utf-8 -*-
 import re

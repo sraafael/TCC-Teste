@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -60,6 +60,8 @@ import {
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import usePaginatedData from "@/hooks/use-paginated-data"
+import PaginationControls from "@/components/ui/pagination-controls"
 
 interface DashboardAdminProps {
   onLogout: () => void
@@ -304,6 +306,19 @@ interface CreatedStudentCredentials {
   temporaryPassword: string
 }
 
+type PaymentMethod = "dinheiro" | "pix" | "cartao-debito" | "cartao-credito"
+
+const getTodayIso = () => new Date().toISOString().slice(0, 10)
+const getCurrentReference = () => new Date().toISOString().slice(0, 7)
+const getDefaultVacationDates = (year = new Date().getFullYear()) => ({
+  start: `${year}-07-01`,
+  end: `${year}-07-15`,
+})
+
+// Evita datas fixas que envelhecem no codigo.
+const { start: DEFAULT_VACATION_START, end: DEFAULT_VACATION_END } = getDefaultVacationDates()
+const JSON_HEADERS = { "Content-Type": "application/json" }
+
 const EMPTY_ADD_STUDENT_FORM: AddStudentForm = {
   name: "",
   cpf: "",
@@ -339,7 +354,7 @@ const EMPTY_FINANCE_FORM: FinanceForm = {
   description: "",
   value: "",
   category: "",
-  date: new Date().toISOString().slice(0, 10),
+  date: getTodayIso(),
 }
 
 const EMPTY_PAYROLL_ADJUSTMENT_FORM: PayrollAdjustmentForm = {
@@ -389,8 +404,96 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5
 
 const NAME_REGEX = /^[\p{L}\s'-]+$/u
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+const SCHEDULE_REGEX = /^([01]\d|2[0-3]):[0-5]\d\s*-\s*([01]\d|2[0-3]):[0-5]\d$/
+
+const EMPTY_RECEIPTS_SUMMARY: ReceiptsSummary = {
+  previsto: 0,
+  previstoLabel: "R$ 0,00",
+  realizado: 0,
+  realizadoLabel: "R$ 0,00",
+  statusTotals: { pago: 0, pendente: 0, atrasado: 0 },
+}
+
+const EMPTY_PAYROLL_SUMMARY: PayrollSummary = {
+  totalBase: 0,
+  totalBaseLabel: "R$ 0,00",
+  totalAdjusted: 0,
+  totalAdjustedLabel: "R$ 0,00",
+  adjustedCount: 0,
+}
+
+const RECEIPT_STATUS_META: Record<ReceiptStatus, { label: string; className: string }> = {
+  pago: {
+    label: "Pago",
+    className: "border-primary/30 bg-primary/10 text-primary",
+  },
+  pendente: {
+    label: "Pendente",
+    className: "border-[oklch(0.75_0.15_85)]/30 bg-[oklch(0.75_0.15_85)]/10 text-[oklch(0.75_0.15_85)]",
+  },
+  atrasado: {
+    label: "Atrasado",
+    className: "border-destructive/30 bg-destructive/10 text-destructive",
+  },
+}
+
+const VACATION_ACTION_META: Record<VacationAction, { label: string; className: string }> = {
+  aprovada: {
+    label: "Ferias aprovadas",
+    className: "border-primary/30 bg-primary/10 text-primary",
+  },
+  concedida: {
+    label: "Ferias concedidas",
+    className: "border-[oklch(0.65_0.18_250)]/30 bg-[oklch(0.55_0.15_250)]/10 text-[oklch(0.65_0.18_250)]",
+  },
+  realocada: {
+    label: "Ferias realocadas",
+    className: "border-[oklch(0.75_0.15_85)]/30 bg-[oklch(0.75_0.15_85)]/10 text-[oklch(0.75_0.15_85)]",
+  },
+  reprovada: {
+    label: "Ferias reprovadas",
+    className: "border-destructive/30 bg-destructive/10 text-destructive",
+  },
+}
+
+const PROFESSOR_STATUS_META: Record<ProfessorStatus, { label: string; className: string }> = {
+  ativo: {
+    label: "Ativo",
+    className: "border-primary/30 text-primary",
+  },
+  ferias: {
+    label: "Ferias",
+    className: "border-[oklch(0.75_0.15_85)]/30 text-[oklch(0.75_0.15_85)]",
+  },
+  inativo: {
+    label: "Inativo",
+    className: "border-border text-muted-foreground",
+  },
+}
+
+const ALERT_ICON_MAP: Record<DashboardAlertApi["icon"], typeof AlertCircle> = {
+  "alert-circle": AlertCircle,
+  clock: Clock,
+  "user-x": UserX,
+  "clipboard-check": ClipboardCheck,
+  "user-plus": UserPlus,
+}
 
 const normalizeDigits = (value: string) => value.replace(/\D/g, "")
+const normalizeText = (value: string) => value.replace(/\s+/g, " ").trim()
+const toDate = (value?: string | null) => {
+  const raw = normalizeText(String(value || ""))
+  if (!raw) return null
+
+  const normalized = /^\d{4}-\d{2}$/.test(raw)
+    ? `${raw}-01T00:00:00`
+    : /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    ? `${raw}T00:00:00`
+    : raw
+  const parsed = new Date(normalized)
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
 const normalizePlanLookupKey = (value: string) =>
   value
     .trim()
@@ -458,9 +561,22 @@ const normalizeSalaryValue = (value: string) =>
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
+const formatDateLabel = (value?: string | null, fallback = "-") => toDate(value)?.toLocaleDateString("pt-BR") || fallback
+const formatMonthYearLabel = (value?: string | null, fallback = "-") =>
+  toDate(value)?.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }) || fallback
+const getPercent = (part: number, total: number) => (total > 0 ? Math.round((part / total) * 100) : 0)
+const getRecentTimeLabel = (value?: string | null, fallback = "Agora") => {
+  const date = toDate(value)
+  if (!date) return fallback
+
+  const diffInDays = Math.floor((Date.now() - date.getTime()) / 86400000)
+  if (diffInDays <= 0) return "Hoje"
+  if (diffInDays === 1) return "Ontem"
+  return formatDateLabel(value, fallback)
+}
 
 const formatCurrencyInput = (value: string) => {
-  const digits = value.replace(/\D/g, "")
+  const digits = normalizeDigits(value)
   if (!digits) return "R$ 0,00"
 
   const amount = Number(digits) / 100
@@ -470,55 +586,90 @@ const formatCurrencyInput = (value: string) => {
   }).format(amount)
 }
 
-const getReceiptStatusLabel = (status: ReceiptStatus) => {
-  switch (status) {
-    case "pago":
-      return "Pago"
-    case "pendente":
-      return "Pendente"
-    case "atrasado":
-      return "Atrasado"
-  }
+const getReceiptStatusLabel = (status: ReceiptStatus) => RECEIPT_STATUS_META[status].label
+const getReceiptStatusClasses = (status: ReceiptStatus) => RECEIPT_STATUS_META[status].className
+const getVacationActionLabel = (action: VacationAction) => VACATION_ACTION_META[action].label
+const getVacationActionClasses = (action: VacationAction) => VACATION_ACTION_META[action].className
+const getProfessorStatusLabel = (status: ProfessorStatus) => PROFESSOR_STATUS_META[status].label
+const getProfessorStatusClasses = (status: ProfessorStatus) => PROFESSOR_STATUS_META[status].className
+const getAlertIcon = (icon: DashboardAlertApi["icon"]) => ALERT_ICON_MAP[icon]
+
+const hasErrors = (errors: object) => Object.keys(errors).length > 0
+const isFilled = (...values: string[]) => values.every((value) => value.trim() !== "")
+const parseMoneyValue = (value: string) => Number(normalizeSalaryValue(value))
+
+const clearFieldError = <T extends string>(
+  setter: Dispatch<SetStateAction<Partial<Record<T, string>>>>,
+  field: T
+) =>
+  setter((prev) => {
+    if (!(field in prev)) return prev
+    const next = { ...prev }
+    delete next[field]
+    return next
+  })
+
+const toggleValue = <T,>(items: T[], value: T) =>
+  items.includes(value) ? items.filter((item) => item !== value) : [...items, value]
+
+const addUniqueValue = <T,>(items: T[], value: T) => (items.includes(value) ? items : [...items, value])
+const removeValue = <T,>(items: T[], value: T) => items.filter((item) => item !== value)
+
+// Centraliza JSON + mensagens para manter handlers pequenos e consistentes.
+const safeJson = async <T,>(response: Response) => response.json().catch(() => null) as Promise<T | null>
+const requestJson = async <T,>(input: RequestInfo | URL, init?: RequestInit) => {
+  const response = await fetch(input, init)
+  return { response, data: await safeJson<T>(response) }
 }
 
-const getReceiptStatusClasses = (status: ReceiptStatus) => {
-  switch (status) {
-    case "pago":
-      return "border-primary/30 bg-primary/10 text-primary"
-    case "pendente":
-      return "border-[oklch(0.75_0.15_85)]/30 bg-[oklch(0.75_0.15_85)]/10 text-[oklch(0.75_0.15_85)]"
-    case "atrasado":
-      return "border-destructive/30 bg-destructive/10 text-destructive"
-  }
+const jsonRequest = (method: string, body?: unknown): RequestInit => ({
+  method,
+  headers: JSON_HEADERS,
+  ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+})
+
+const getErrorMessage = (payload: unknown, fallback: string) =>
+  typeof payload === "object" && payload && "error" in payload && typeof payload.error === "string"
+    ? payload.error
+    : fallback
+
+const getNameError = (value: string) => {
+  if (!value) return "Nome obrigatorio."
+  if (value.length < 3 || value.length > 100) return "Nome deve ter entre 3 e 100 letras."
+  if (!NAME_REGEX.test(value)) return "Nome deve conter apenas letras e espacos."
 }
 
-const getVacationActionLabel = (action: VacationAction) => {
-  switch (action) {
-    case "aprovada":
-      return "Ferias aprovadas"
-    case "reprovada":
-      return "Ferias reprovadas"
-    case "realocada":
-      return "Ferias realocadas"
-    case "concedida":
-      return "Ferias concedidas"
-  }
+const getCpfError = (value: string) => {
+  if (!value) return "CPF obrigatorio."
+  if (!isValidCpf(value)) return "CPF invalido. Informe 11 digitos validos."
 }
 
-const getVacationActionClasses = (action: VacationAction) => {
-  switch (action) {
-    case "aprovada":
-      return "border-primary/30 bg-primary/10 text-primary"
-    case "concedida":
-      return "border-[oklch(0.65_0.18_250)]/30 bg-[oklch(0.55_0.15_250)]/10 text-[oklch(0.65_0.18_250)]"
-    case "realocada":
-      return "border-[oklch(0.75_0.15_85)]/30 bg-[oklch(0.75_0.15_85)]/10 text-[oklch(0.75_0.15_85)]"
-    case "reprovada":
-      return "border-destructive/30 bg-destructive/10 text-destructive"
-  }
+const getPhoneError = (value: string) => {
+  if (!value) return "Telefone obrigatorio."
+  if (![10, 11].includes(value.length)) return "Telefone deve ter 10 ou 11 digitos (com DDD)."
 }
 
-const SCHEDULE_REGEX = /^([01]\d|2[0-3]):[0-5]\d\s*-\s*([01]\d|2[0-3]):[0-5]\d$/
+const getEmailError = (value: string) => {
+  if (!value) return "Email obrigatorio."
+  if (value.length > 120) return "Email deve ter no maximo 120 caracteres."
+  if (!EMAIL_REGEX.test(value)) return "Email invalido."
+}
+
+const countAdjustedPayrollEntries = (entries: PayrollEntry[]) =>
+  entries.filter((entry) => Math.abs(entry.adjustedAmount - entry.baseAmount) > 0.009 || entry.status === "ajustado").length
+
+const buildPayrollSummary = (entries: PayrollEntry[]): PayrollSummary => {
+  const totalBase = entries.reduce((sum, entry) => sum + entry.baseAmount, 0)
+  const totalAdjusted = entries.reduce((sum, entry) => sum + entry.adjustedAmount, 0)
+
+  return {
+    totalBase,
+    totalBaseLabel: formatCurrency(totalBase),
+    totalAdjusted,
+    totalAdjustedLabel: formatCurrency(totalAdjusted),
+    adjustedCount: countAdjustedPayrollEntries(entries),
+  }
+}
 
 export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   // Estados de controle da interface (aberturas de sheets, dialogs e selecoes).
@@ -560,13 +711,15 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   const [editProfessorError, setEditProfessorError] = useState("")
   const [isUpdatingProfessor, setIsUpdatingProfessor] = useState(false)
   const [selectedProfessorForVacation, setSelectedProfessorForVacation] = useState<Professor | null>(null)
-  const [vacationStartDate, setVacationStartDate] = useState("2026-07-01")
-  const [vacationEndDate, setVacationEndDate] = useState("2026-07-15")
+  const [vacationStartDate, setVacationStartDate] = useState(DEFAULT_VACATION_START)
+  const [vacationEndDate, setVacationEndDate] = useState(DEFAULT_VACATION_END)
   const [vacationError, setVacationError] = useState("")
   const [vacationHistoryByProfessor, setVacationHistoryByProfessor] = useState<Record<string, VacationHistoryEntry[]>>({})
   const [financeForm, setFinanceForm] = useState<FinanceForm>(EMPTY_FINANCE_FORM)
   const [financeFormError, setFinanceFormError] = useState("")
   const [paymentAmount, setPaymentAmount] = useState("R$ 0,00")
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix")
+  const [paymentReference, setPaymentReference] = useState(getCurrentReference())
   const [planPrice, setPlanPrice] = useState("R$ 0,00")
   const [planForm, setPlanForm] = useState<PlanForm>(EMPTY_PLAN_FORM)
   const [planBenefitInput, setPlanBenefitInput] = useState("")
@@ -584,27 +737,11 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   const [agendaClassError, setAgendaClassError] = useState("")
   const [isSavingAgendaClass, setIsSavingAgendaClass] = useState(false)
   const [automatedReceipts, setAutomatedReceipts] = useState<AutomatedReceipt[]>([])
-  const [receiptsSummary, setReceiptsSummary] = useState<ReceiptsSummary>({
-    previsto: 0,
-    previstoLabel: "R$ 0,00",
-    realizado: 0,
-    realizadoLabel: "R$ 0,00",
-    statusTotals: {
-      pago: 0,
-      pendente: 0,
-      atrasado: 0,
-    },
-  })
+  const [receiptsSummary, setReceiptsSummary] = useState<ReceiptsSummary>(EMPTY_RECEIPTS_SUMMARY)
   const [payrollEntries, setPayrollEntries] = useState<PayrollEntry[]>([])
   const [payrollReference, setPayrollReference] = useState("")
   const [defaultPayrollDueDate, setDefaultPayrollDueDate] = useState("")
-  const [payrollSummary, setPayrollSummary] = useState<PayrollSummary>({
-    totalBase: 0,
-    totalBaseLabel: "R$ 0,00",
-    totalAdjusted: 0,
-    totalAdjustedLabel: "R$ 0,00",
-    adjustedCount: 0,
-  })
+  const [payrollSummary, setPayrollSummary] = useState<PayrollSummary>(EMPTY_PAYROLL_SUMMARY)
   const [selectedPayrollEntry, setSelectedPayrollEntry] = useState<PayrollEntry | null>(null)
   const [payrollAdjustmentForm, setPayrollAdjustmentForm] = useState<PayrollAdjustmentForm>(EMPTY_PAYROLL_ADJUSTMENT_FORM)
   const [payrollAdjustmentError, setPayrollAdjustmentError] = useState("")
@@ -614,35 +751,13 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   const [isRegisteringPayment, setIsRegisteringPayment] = useState(false)
   const [paymentError, setPaymentError] = useState("")
 
-  // Cards de resumo exibidos no topo do painel.
-  const stats = [
-    { label: "Alunos Ativos", value: "0", icon: Users, change: "-" },
-    { label: "Professores", value: "0", icon: Dumbbell, change: "-" },
-    { label: "Receita Mensal", value: "R$ 0,00", icon: DollarSign, change: "-" },
-    { label: "Novos Alunos", value: "0", icon: TrendingUp, change: "-" },
-  ]
-
-  // Historico rapido de eventos recentes na academia.
-  const recentActions: Array<{ action: string; name: string; time: string }> = []
-
-  // Base local de alunos (mock) usada para listagem, filtros e edicao.
-  const initialStudents: Student[] = []
-  const [allStudents, setAllStudents] = useState<Student[]>(initialStudents)
-
-  // Lista consolidada de professores.
-  const initialProfessors: Professor[] = []
-  const [allProfessors, setAllProfessors] = useState<Professor[]>(initialProfessors)
-
-  // Dados financeiros (mock) para area de faturamento.
-  const financialData: Array<{ month: string; receita: string; despesas: string; lucro: string; status: string }> = []
+  const [allStudents, setAllStudents] = useState<Student[]>([])
+  const [allProfessors, setAllProfessors] = useState<Professor[]>([])
 
   const [financeEntries, setFinanceEntries] = useState<FinanceEntry[]>([])
 
   // Agenda de aulas e eventos do dia.
   const [agendaToday, setAgendaToday] = useState<AgendaClass[]>([])
-
-  // Bloco de relatórios administrativos resumidos.
-  const reports: Array<{ title: string; description: string; value: string; trend: string }> = []
 
   // Catalogo de planos disponiveis para contratacao.
   const [plans, setPlans] = useState<Plan[]>([])
@@ -657,110 +772,88 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     { label: "Planos da Academia", icon: Tag, sheet: "planos" as SheetType },
   ]
 
-  // Filtro combinado por busca textual + situacao financeira/atividade.
+  // Faz bootstrap do painel com cancelamento seguro quando o componente desmonta.
   useEffect(() => {
-    let mounted = true
+    const controller = new AbortController()
 
     const loadFromDatabase = async () => {
       try {
-        const [studentsResponse, professorsResponse, receiptsResponse, payrollResponse, plansResponse, agendaResponse, alertsResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/cadastros/alunos`),
-          fetch(`${API_BASE_URL}/api/cadastros/professores`),
-          fetch(`${API_BASE_URL}/api/finance/recebimentos`),
-          fetch(`${API_BASE_URL}/api/finance/payroll`),
-          fetch(`${API_BASE_URL}/api/planos`),
-          fetch(`${API_BASE_URL}/api/agenda/classes`),
-          fetch(`${API_BASE_URL}/api/dashboard/alerts`),
+        const [studentsResult, professorsResult, receiptsResult, payrollResult, plansResult, agendaResult, alertsResult] = await Promise.all([
+          requestJson<Student[]>(`${API_BASE_URL}/api/cadastros/alunos`, { signal: controller.signal }),
+          requestJson<Professor[]>(`${API_BASE_URL}/api/cadastros/professores`, { signal: controller.signal }),
+          requestJson<{ recent_receipts?: AutomatedReceipt[]; summary?: ReceiptsSummary }>(`${API_BASE_URL}/api/finance/recebimentos`, { signal: controller.signal }),
+          requestJson<{ items?: PayrollEntry[]; summary?: PayrollSummary; reference?: string; default_due_date?: string }>(`${API_BASE_URL}/api/finance/payroll`, { signal: controller.signal }),
+          requestJson<Plan[]>(`${API_BASE_URL}/api/planos`, { signal: controller.signal }),
+          requestJson<AgendaClass[]>(`${API_BASE_URL}/api/agenda/classes`, { signal: controller.signal }),
+          requestJson<DashboardAlertApi[]>(`${API_BASE_URL}/api/dashboard/alerts`, { signal: controller.signal }),
         ])
 
-        if (studentsResponse.ok) {
-          const studentsPayload = await studentsResponse.json()
-          if (mounted && Array.isArray(studentsPayload) && studentsPayload.length > 0) {
-            setAllStudents(studentsPayload)
-          }
-        }
-
-        if (professorsResponse.ok) {
-          const professorsPayload = await professorsResponse.json()
-          if (mounted && Array.isArray(professorsPayload) && professorsPayload.length > 0) {
-            setAllProfessors(professorsPayload)
-          }
-        }
-
-        if (receiptsResponse.ok) {
-          const receiptsPayload = await receiptsResponse.json()
-          if (mounted && Array.isArray(receiptsPayload.recent_receipts)) {
-            setAutomatedReceipts(receiptsPayload.recent_receipts)
-          }
-          if (mounted && receiptsPayload.summary) {
-            setReceiptsSummary(receiptsPayload.summary)
-          }
-        }
-
-        if (payrollResponse.ok) {
-          const payrollPayload = await payrollResponse.json()
-          if (mounted && Array.isArray(payrollPayload.items)) {
-            setPayrollEntries(payrollPayload.items)
-          }
-          if (mounted && payrollPayload.summary) {
-            setPayrollSummary(payrollPayload.summary)
-          }
-          if (mounted && payrollPayload.reference) {
-            setPayrollReference(payrollPayload.reference)
-          }
-          if (mounted && payrollPayload.default_due_date) {
-            setDefaultPayrollDueDate(payrollPayload.default_due_date)
-          }
-        }
-
-        if (plansResponse.ok) {
-          const plansPayload = await plansResponse.json()
-          if (mounted && Array.isArray(plansPayload)) {
-            setPlans(plansPayload)
-          }
-        }
-
-        if (agendaResponse.ok) {
-          const agendaPayload = await agendaResponse.json()
-          if (mounted && Array.isArray(agendaPayload) && agendaPayload.length > 0) {
-            setAgendaToday(agendaPayload)
-          }
-        }
-
-        if (alertsResponse.ok) {
-          const alertsPayload = await alertsResponse.json()
-          if (mounted && Array.isArray(alertsPayload)) {
-            setDashboardAlertsRaw(alertsPayload)
-          }
-        }
-      } catch {
+        if (studentsResult.response.ok && Array.isArray(studentsResult.data) && studentsResult.data.length > 0) setAllStudents(studentsResult.data)
+        if (professorsResult.response.ok && Array.isArray(professorsResult.data) && professorsResult.data.length > 0) setAllProfessors(professorsResult.data)
+        if (receiptsResult.response.ok && Array.isArray(receiptsResult.data?.recent_receipts)) setAutomatedReceipts(receiptsResult.data.recent_receipts)
+        if (receiptsResult.response.ok && receiptsResult.data?.summary) setReceiptsSummary(receiptsResult.data.summary)
+        if (payrollResult.response.ok && Array.isArray(payrollResult.data?.items)) setPayrollEntries(payrollResult.data.items)
+        if (payrollResult.response.ok && payrollResult.data?.summary) setPayrollSummary(payrollResult.data.summary)
+        if (payrollResult.response.ok && payrollResult.data?.reference) setPayrollReference(payrollResult.data.reference)
+        if (payrollResult.response.ok && payrollResult.data?.default_due_date) setDefaultPayrollDueDate(payrollResult.data.default_due_date)
+        if (plansResult.response.ok && Array.isArray(plansResult.data)) setPlans(plansResult.data)
+        if (agendaResult.response.ok && Array.isArray(agendaResult.data) && agendaResult.data.length > 0) setAgendaToday(agendaResult.data)
+        if (alertsResult.response.ok && Array.isArray(alertsResult.data)) setDashboardAlertsRaw(alertsResult.data)
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return
         // Mantem fallback local caso API ainda nao esteja disponivel.
       }
     }
 
     void loadFromDatabase()
-    return () => {
-      mounted = false
-    }
+    return () => controller.abort()
   }, [])
 
   // Filtro combinado por busca textual + situacao financeira/atividade.
-  const filteredStudents = allStudents.filter((s) => {
-    const matchSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.cpf.includes(searchQuery)
-    if (studentFilter === "todos") return matchSearch
-    if (studentFilter === "em-dia") return matchSearch && s.payment === "em-dia" && s.status === "ativo"
-    if (studentFilter === "atrasado") return matchSearch && s.payment === "atrasado"
-    if (studentFilter === "inativo") return matchSearch && s.status === "inativo"
-    return matchSearch
-  })
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase()
+  const normalizedSearchDigits = normalizeDigits(searchQuery)
+  const matchesSearch = ({ name, cpf }: { name: string; cpf: string }) =>
+    !normalizedSearchQuery
+    || name.toLowerCase().includes(normalizedSearchQuery)
+    || (normalizedSearchDigits !== "" && normalizeDigits(cpf).includes(normalizedSearchDigits))
 
-  const filteredProfessors = allProfessors.filter((p) => {
-    const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.cpf.includes(searchQuery)
-    if (professorFilter === "todos") return matchSearch
-    return matchSearch && p.status === professorFilter
-  })
-  const selectedAgendaClass = agendaToday.find((item) => item.id === selectedAgendaClassId) || null
-  const availablePlans = plans.filter((plan) => plan.active)
+  const studentMatchesFilter: Record<StudentFilter, (student: Student) => boolean> = {
+    todos: () => true,
+    "em-dia": ({ payment, status }) => payment === "em-dia" && status === "ativo",
+    atrasado: ({ payment }) => payment === "atrasado",
+    inativo: ({ status }) => status === "inativo",
+  }
+
+  const professorMatchesFilter: Record<ProfessorFilter, (professor: Professor) => boolean> = {
+    todos: () => true,
+    ativo: ({ status }) => status === "ativo",
+    ferias: ({ status }) => status === "ferias",
+    inativo: ({ status }) => status === "inativo",
+  }
+
+  const filteredStudents = allStudents.filter((student) => matchesSearch(student) && studentMatchesFilter[studentFilter](student))
+  const filteredProfessors = allProfessors.filter((professor) => matchesSearch(professor) && professorMatchesFilter[professorFilter](professor))
+
+  // Paginação para listagem de alunos (consome API paginada)
+  const STUDENTS_PAGE_SIZE = 10
+  const studentsEndpoint = `/api/cadastros/alunos${searchQuery || studentFilter !== "todos" ? `?search=${encodeURIComponent(searchQuery)}&filter=${encodeURIComponent(studentFilter)}` : ""}`
+  const {
+    items: paginatedStudents,
+    page: studentsPage,
+    pageSize: studentsQueryPageSize,
+    total: studentsTotal,
+    hasMore: studentsHasMore,
+    nextPage: studentsNextPage,
+    prevPage: studentsPrevPage,
+    goToPage: studentsGoToPage,
+    refresh: refreshStudents,
+    loading: studentsLoading,
+  } = usePaginatedData<Student>(studentsEndpoint, { pageSize: STUDENTS_PAGE_SIZE })
+
+  useEffect(() => {
+    studentsGoToPage(1)
+  }, [searchQuery, studentFilter, studentsGoToPage])
+  const selectedAgendaClass = agendaToday.find((item) => item.id === selectedAgendaClassId) ?? null
   const activePlans = plans.filter((plan) => plan.active)
   const inactivePlans = plans.filter((plan) => !plan.active)
   const studentMatchesAgendaEntry = (agendaStudent: AgendaStudent, student: Student) =>
@@ -785,7 +878,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   const getStudentPrimaryClass = (student: Student) => getStudentAssignedClasses(student)[0] || null
   const activeProfessorsForAgenda = allProfessors.filter((professor) => professor.status === "ativo")
   const overdueStudents = allStudents.filter((student) => student.payment === "atrasado")
-  const currentPayrollReference = payrollReference || new Date().toISOString().slice(0, 7)
+  const currentPayrollReference = payrollReference || getCurrentReference()
   const getProfessorAssignedClasses = (professor: Professor) =>
     agendaToday.filter(
       (agendaClass) => normalizeNameLookupKey(agendaClass.professor) === normalizeNameLookupKey(professor.name)
@@ -796,26 +889,6 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
         normalizeDigits(entry.professorCpf) === normalizeDigits(professor.cpf)
         && entry.reference === currentPayrollReference
     ) || null
-  const getProfessorStatusLabel = (status: ProfessorStatus) => {
-    switch (status) {
-      case "ativo":
-        return "Ativo"
-      case "ferias":
-        return "Ferias"
-      case "inativo":
-        return "Inativo"
-    }
-  }
-  const getProfessorStatusClasses = (status: ProfessorStatus) => {
-    switch (status) {
-      case "ativo":
-        return "border-primary/30 text-primary"
-      case "ferias":
-        return "border-[oklch(0.75_0.15_85)]/30 text-[oklch(0.75_0.15_85)]"
-      case "inativo":
-        return "border-border text-muted-foreground"
-    }
-  }
   const professorsOnVacationCount = allProfessors.filter((professor) => professor.status === "ferias").length
   const professorsWithoutClassesCount = allProfessors.filter((professor) => getProfessorAssignedClasses(professor).length === 0).length
   const professorsPendingPayrollCount = allProfessors.filter((professor) => {
@@ -825,6 +898,37 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   const getProfessorVacationHistory = (professor: Professor | null) =>
     professor ? vacationHistoryByProfessor[professor.cpf] || [] : []
   const currentProfessorVacation = getProfessorVacationHistory(selectedProfessorForVacation)[0] || null
+  const openStudentSheet = (filter: StudentFilter = "todos", query = "") => {
+    setSearchQuery(query)
+    setStudentFilter(filter)
+    setActiveSheet("alunos")
+  }
+  const openDashboardSheet = (sheet: NonNullable<SheetType>) => {
+    setSearchQuery("")
+    setStudentFilter("todos")
+    setProfessorFilter("todos")
+    setSelectedAgendaClassId(null)
+    setActiveSheet(sheet)
+  }
+  const openAgendaSheet = (classId?: string | null) => {
+    setSelectedAgendaClassId(classId || null)
+    setActiveSheet("agenda")
+  }
+  const getPlanPriceForStudent = (student?: Student | null) =>
+    activePlans.find((plan) => normalizePlanLookupKey(plan.name) === normalizePlanLookupKey(student?.plan || ""))?.price || "R$ 0,00"
+  const resetPaymentDialog = (student?: Student | null) => {
+    setPaymentAmount(getPlanPriceForStudent(student))
+    setPaymentMethod("pix")
+    setPaymentReference(getCurrentReference())
+    setPaymentError("")
+  }
+  const openPaymentDialog = (student?: Student | null) => {
+    const targetStudent = student || selectedStudent
+    if (!targetStudent) return
+    if (student) setSelectedStudent(student)
+    resetPaymentDialog(targetStudent)
+    setShowPaymentDialog(true)
+  }
 
   const openWhatsappCharge = (studentCpf?: string, studentPhone?: string) => {
     const alertWhatsappTarget = studentCpf
@@ -833,16 +937,12 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     const rawPhone = normalizeDigits(studentPhone || alertWhatsappTarget?.phone || "")
 
     if (!alertWhatsappTarget) {
-      setSearchQuery("")
-      setStudentFilter("atrasado")
-      setActiveSheet("alunos")
+      openStudentSheet("atrasado")
       return
     }
 
     if (!rawPhone) {
-      setSearchQuery(alertWhatsappTarget.name)
-      setActiveSheet("alunos")
-      setStudentFilter("atrasado")
+      openStudentSheet("atrasado", alertWhatsappTarget.name)
       return
     }
 
@@ -850,67 +950,27 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     window.open(`https://wa.me/55${rawPhone}?text=${message}`, "_blank", "noopener,noreferrer")
   }
 
-  const getAlertIcon = (icon: DashboardAlertApi["icon"]) => {
-    switch (icon) {
-      case "clock":
-        return Clock
-      case "user-x":
-        return UserX
-      case "clipboard-check":
-        return ClipboardCheck
-      case "user-plus":
-        return UserPlus
-      case "alert-circle":
-      default:
-        return AlertCircle
-    }
-  }
-
   const runAlertAction = (action?: DashboardAlertApiAction) => {
     if (!action) return
 
-    switch (action.id) {
-      case "charge_whatsapp":
-        openWhatsappCharge(action.studentCpf, action.studentPhone)
-        return
-      case "open_overdue_students":
-        setSearchQuery("")
-        setStudentFilter("atrasado")
-        setActiveSheet("alunos")
-        return
-      case "open_students":
-        setSearchQuery("")
-        setStudentFilter("todos")
-        setActiveSheet("alunos")
-        return
-      case "open_finance":
-        setActiveSheet("financeiro")
-        return
-      case "open_professors":
-        setActiveSheet("professores")
-        return
-      case "open_agenda":
-        setSelectedAgendaClassId(action.classId || "")
-        setActiveSheet("agenda")
-        return
-      case "open_plans":
-        setActiveSheet("planos")
-        return
-      case "focus_student": {
-        const targetStudent = action.studentCpf
-          ? allStudents.find((student) => normalizeDigits(student.cpf) === normalizeDigits(action.studentCpf || ""))
-          : null
-        setSearchQuery(targetStudent?.name || "")
-        setStudentFilter("todos")
-        setActiveSheet("alunos")
-        return
-      }
-      case "open_add_student":
-        setShowAddStudentDialog(true)
-        return
-      default:
-        return
+    const actionStudentCpf = action.studentCpf || ""
+    const targetStudent = actionStudentCpf
+      ? allStudents.find((student) => normalizeDigits(student.cpf) === normalizeDigits(actionStudentCpf))
+      : null
+
+    const actions: Record<string, () => void> = {
+      charge_whatsapp: () => openWhatsappCharge(action.studentCpf, action.studentPhone),
+      open_overdue_students: () => openStudentSheet("atrasado"),
+      open_students: () => openStudentSheet(),
+      open_finance: () => openDashboardSheet("financeiro"),
+      open_professors: () => openDashboardSheet("professores"),
+      open_agenda: () => openAgendaSheet(action.classId),
+      open_plans: () => openDashboardSheet("planos"),
+      focus_student: () => openStudentSheet("todos", targetStudent?.name || ""),
+      open_add_student: () => setShowAddStudentDialog(true),
     }
+
+    actions[action.id]?.()
   }
 
   const fallbackAlerts: DashboardAlertApi[] = overdueStudents.length > 0
@@ -1046,19 +1106,17 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     setIsUpdatingPlanStatusId(plan.id)
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/planos/${plan.id}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ active: !plan.active }),
-      })
+      const { response, data } = await requestJson<Plan & { error?: string }>(
+        `${API_BASE_URL}/api/planos/${plan.id}/status`,
+        jsonRequest("PATCH", { active: !plan.active })
+      )
 
-      const responseBody = await response.json().catch(() => ({}))
       if (!response.ok) {
-        setPlansError(responseBody.error || "Nao foi possivel atualizar o status do plano.")
+        setPlansError(getErrorMessage(data, "Nao foi possivel atualizar o status do plano."))
         return
       }
 
-      const updatedPlan = responseBody as Plan
+      const updatedPlan = data as Plan
       setPlans((prev) => prev.map((item) => (item.id === updatedPlan.id ? updatedPlan : item)))
     } catch {
       setPlansError("Nao foi possivel conectar com a API de planos.")
@@ -1079,38 +1137,42 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     setPlansError("")
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/planos/${selectedPlanForReallocation.id}/realocar-alunos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetPlanId: planReallocationForm.targetPlanId }),
-      })
+      const { response, data } = await requestJson<{
+        error?: string
+        message?: string
+        students?: Student[]
+        source_plan?: Plan
+        target_plan?: Plan
+      }>(
+        `${API_BASE_URL}/api/planos/${selectedPlanForReallocation.id}/realocar-alunos`,
+        jsonRequest("POST", { targetPlanId: planReallocationForm.targetPlanId })
+      )
 
-      const responseBody = await response.json().catch(() => ({}))
       if (!response.ok) {
-        setPlanReallocationError(responseBody.error || "Nao foi possivel realocar os alunos.")
+        setPlanReallocationError(getErrorMessage(data, "Nao foi possivel realocar os alunos."))
         return
       }
 
-      if (Array.isArray(responseBody.students)) {
+      if (Array.isArray(data?.students)) {
         setAllStudents((prev) =>
           prev.map((student) => {
-            const updatedStudent = responseBody.students.find((item: Student) => normalizeDigits(item.cpf) === normalizeDigits(student.cpf))
+            const updatedStudent = data.students?.find((item) => normalizeDigits(item.cpf) === normalizeDigits(student.cpf))
             return updatedStudent ? { ...student, ...updatedStudent } : student
           })
         )
       }
 
-      if (responseBody.source_plan && responseBody.target_plan) {
+      if (data?.source_plan && data.target_plan) {
         setPlans((prev) =>
           prev.map((plan) => {
-            if (plan.id === responseBody.source_plan.id) return responseBody.source_plan
-            if (plan.id === responseBody.target_plan.id) return responseBody.target_plan
+            if (plan.id === data.source_plan?.id) return data.source_plan
+            if (plan.id === data.target_plan?.id) return data.target_plan
             return plan
           })
         )
       }
 
-      setPlansError(responseBody.message || "Alunos realocados com sucesso.")
+      setPlansError(data?.message || "Alunos realocados com sucesso.")
       setShowPlanReallocationDialog(false)
       setSelectedPlanForReallocation(null)
       setPlanReallocationForm(EMPTY_PLAN_REALLOCATION_FORM)
@@ -1160,24 +1222,22 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/agenda/reallocate-student`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { response, data } = await requestJson<{ error?: string; classes?: AgendaClass[] }>(
+        `${API_BASE_URL}/api/agenda/reallocate-student`,
+        jsonRequest("POST", {
           studentCpf: selectedStudent.cpf,
           sourceClassId: sourceClass.id,
           targetClassId: targetClass.id,
-        }),
-      })
+        })
+      )
 
-      const responseBody = await response.json().catch(() => ({}))
       if (!response.ok) {
-        setStudentClassReallocationError(responseBody.error || "Nao foi possivel realocar o aluno.")
+        setStudentClassReallocationError(getErrorMessage(data, "Nao foi possivel realocar o aluno."))
         return
       }
 
-      if (Array.isArray(responseBody.classes)) {
-        setAgendaToday(responseBody.classes)
+      if (Array.isArray(data?.classes)) {
+        setAgendaToday(data.classes)
       }
 
       setShowStudentClassReallocationDialog(false)
@@ -1189,10 +1249,10 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   }
 
   const handleSaveAgendaClass = async () => {
-    const event = agendaClassForm.event.trim()
-    const professor = agendaClassForm.professor.trim()
-    const time = agendaClassForm.time.trim()
-    const room = agendaClassForm.room.trim()
+    const event = normalizeText(agendaClassForm.event)
+    const professor = normalizeText(agendaClassForm.professor)
+    const time = normalizeText(agendaClassForm.time)
+    const room = normalizeText(agendaClassForm.room)
     const capacity = Number.parseInt(agendaClassForm.capacity, 10)
 
     if (!event) {
@@ -1220,31 +1280,29 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     setAgendaClassError("")
 
     try {
-      const response = await fetch(
+      const url =
         agendaDialog === "editar-turma" && selectedAgendaClassForAction
           ? `${API_BASE_URL}/api/agenda/classes/${selectedAgendaClassForAction.id}`
-          : `${API_BASE_URL}/api/agenda/classes`,
-        {
-          method: agendaDialog === "editar-turma" ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            event,
-            professor,
-            time,
-            room,
-            capacity,
-            professorStatus: "confirmado",
-          }),
-        }
+          : `${API_BASE_URL}/api/agenda/classes`
+      const method = agendaDialog === "editar-turma" ? "PUT" : "POST"
+      const { response, data } = await requestJson<AgendaClass & { error?: string }>(
+        url,
+        jsonRequest(method, {
+          event,
+          professor,
+          time,
+          room,
+          capacity,
+          professorStatus: "confirmado",
+        })
       )
 
-      const responseBody = await response.json().catch(() => ({}))
       if (!response.ok) {
-        setAgendaClassError(responseBody.error || "Nao foi possivel salvar a turma.")
+        setAgendaClassError(getErrorMessage(data, "Nao foi possivel salvar a turma."))
         return
       }
 
-      const savedClass = responseBody as AgendaClass
+      const savedClass = data as AgendaClass
       setAgendaToday((prev) => {
         const nextList =
           agendaDialog === "editar-turma"
@@ -1271,13 +1329,13 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     setIsSavingAgendaClass(true)
     setAgendaClassError("")
     try {
-      const response = await fetch(`${API_BASE_URL}/api/agenda/classes/${selectedAgendaClassForAction.id}`, {
-        method: "DELETE",
-      })
+      const { response, data } = await requestJson<{ error?: string }>(
+        `${API_BASE_URL}/api/agenda/classes/${selectedAgendaClassForAction.id}`,
+        jsonRequest("DELETE")
+      )
 
-      const responseBody = await response.json().catch(() => ({}))
       if (!response.ok) {
-        setAgendaClassError(responseBody.error || "Nao foi possivel cancelar a turma.")
+        setAgendaClassError(getErrorMessage(data, "Nao foi possivel cancelar a turma."))
         return
       }
 
@@ -1292,44 +1350,23 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     }
   }
 
-  const togglePlanModality = (modality: string) => {
-    setPlanForm((prev) => ({
-      ...prev,
-      modalities: prev.modalities.includes(modality)
-        ? prev.modalities.filter((item) => item !== modality)
-        : [...prev.modalities, modality],
-    }))
+  const updatePlanItems = (field: "modalities" | "benefits", updater: (items: string[]) => string[]) => {
+    setPlanForm((prev) => ({ ...prev, [field]: updater(prev[field]) }))
     setPlanFormError("")
   }
 
-  const togglePlanBenefit = (benefit: string) => {
-    setPlanForm((prev) => ({
-      ...prev,
-      benefits: prev.benefits.includes(benefit)
-        ? prev.benefits.filter((item) => item !== benefit)
-        : [...prev.benefits, benefit],
-    }))
-    setPlanFormError("")
-  }
+  const togglePlanModality = (modality: string) => updatePlanItems("modalities", (items) => toggleValue(items, modality))
+  const togglePlanBenefit = (benefit: string) => updatePlanItems("benefits", (items) => toggleValue(items, benefit))
 
   const addCustomPlanBenefit = () => {
-    const benefit = planBenefitInput.trim()
+    const benefit = normalizeText(planBenefitInput)
     if (!benefit) return
 
-    setPlanForm((prev) => ({
-      ...prev,
-      benefits: prev.benefits.includes(benefit) ? prev.benefits : [...prev.benefits, benefit],
-    }))
+    updatePlanItems("benefits", (items) => addUniqueValue(items, benefit))
     setPlanBenefitInput("")
-    setPlanFormError("")
   }
 
-  const removePlanBenefit = (benefit: string) => {
-    setPlanForm((prev) => ({
-      ...prev,
-      benefits: prev.benefits.filter((item) => item !== benefit),
-    }))
-  }
+  const removePlanBenefit = (benefit: string) => updatePlanItems("benefits", (items) => removeValue(items, benefit))
 
   const handleSavePlan = async () => {
     const normalizedName = planForm.name.trim()
@@ -1367,22 +1404,17 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     setPlansError("")
 
     try {
-      const response = await fetch(
+      const { response, data } = await requestJson<Plan & { error?: string }>(
         editingPlanId ? `${API_BASE_URL}/api/planos/${editingPlanId}` : `${API_BASE_URL}/api/planos`,
-        {
-          method: editingPlanId ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
+        jsonRequest(editingPlanId ? "PUT" : "POST", payload)
       )
 
-      const responseBody = await response.json().catch(() => ({}))
       if (!response.ok) {
-        setPlanFormError(responseBody.error || "Nao foi possivel salvar o plano.")
+        setPlanFormError(getErrorMessage(data, "Nao foi possivel salvar o plano."))
         return
       }
 
-      const savedPlan = responseBody as Plan
+      const savedPlan = data as Plan
       setPlans((prev) =>
         editingPlanId
           ? prev.map((plan) => (plan.id === savedPlan.id ? savedPlan : plan))
@@ -1409,13 +1441,13 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/planos/${planId}`, {
-        method: "DELETE",
-      })
+      const { response, data } = await requestJson<{ error?: string }>(
+        `${API_BASE_URL}/api/planos/${planId}`,
+        jsonRequest("DELETE")
+      )
 
-      const responseBody = await response.json().catch(() => ({}))
       if (!response.ok) {
-        setPlansError(responseBody.error || "Nao foi possivel remover o plano.")
+        setPlansError(getErrorMessage(data, "Nao foi possivel remover o plano."))
         return
       }
 
@@ -1468,10 +1500,9 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     setAddStudentError("")
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/cadastros/alunos/${normalizeDigits(editStudentForm.cpf)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { response, data } = await requestJson<{ error?: string }>(
+        `${API_BASE_URL}/api/cadastros/alunos/${normalizeDigits(editStudentForm.cpf)}`,
+        jsonRequest("PUT", {
           nome: editStudentForm.name,
           cpf: normalizeDigits(editStudentForm.cpf),
           telefone: normalizeDigits(editStudentForm.phone),
@@ -1481,12 +1512,11 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
           plano: editStudentForm.plan,
           status: editStudentForm.status,
           pagamento: editStudentForm.payment,
-        }),
-      })
+        })
+      )
 
-      const responseBody = await response.json().catch(() => ({}))
       if (!response.ok) {
-        setAddStudentError(responseBody.error || "Falha ao atualizar aluno.")
+        setAddStudentError(getErrorMessage(data, "Falha ao atualizar aluno."))
         return
       }
 
@@ -1510,60 +1540,52 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     }
   }
 
+  const resetAddStudentDialog = () => {
+    setAddStudentForm(EMPTY_ADD_STUDENT_FORM)
+    setAddStudentFieldErrors({})
+    setAddStudentError("")
+  }
+
+  const resetAddProfessorDialog = () => {
+    setAddProfessorForm(EMPTY_ADD_PROFESSOR_FORM)
+    setAddProfessorFieldErrors({})
+    setAddProfessorError("")
+  }
+
   const onAddStudentDialogChange = (open: boolean) => {
     setShowAddStudentDialog(open)
-    if (!open) {
-      setAddStudentForm(EMPTY_ADD_STUDENT_FORM)
-      setAddStudentFieldErrors({})
-      setAddStudentError("")
-    }
+    if (!open) resetAddStudentDialog()
   }
 
   const onAddProfessorDialogChange = (open: boolean) => {
     setShowAddProfessorDialog(open)
-    if (!open) {
-      setAddProfessorForm(EMPTY_ADD_PROFESSOR_FORM)
-      setAddProfessorFieldErrors({})
-      setAddProfessorError("")
-    }
+    if (!open) resetAddProfessorDialog()
   }
 
   const openFinanceDialog = (type: FinanceDialogType) => {
     setFinanceDialog(type)
     setFinanceForm({
       ...EMPTY_FINANCE_FORM,
-      date: new Date().toISOString().slice(0, 10),
+      date: getTodayIso(),
     })
     setFinanceFormError("")
   }
 
   const updateAddStudentField = <K extends keyof AddStudentForm>(field: K, value: AddStudentForm[K]) => {
     setAddStudentForm((prev) => ({ ...prev, [field]: value }))
-    setAddStudentFieldErrors((prev) => {
-      const next = { ...prev }
-      delete next[field]
-      return next
-    })
+    clearFieldError(setAddStudentFieldErrors, field)
     setAddStudentError("")
   }
 
   const updateAddProfessorField = <K extends keyof AddProfessorForm>(field: K, value: AddProfessorForm[K]) => {
     setAddProfessorForm((prev) => ({ ...prev, [field]: value }))
-    setAddProfessorFieldErrors((prev) => {
-      const next = { ...prev }
-      delete next[field]
-      return next
-    })
+    clearFieldError(setAddProfessorFieldErrors, field)
     setAddProfessorError("")
   }
 
   const updateEditProfessorField = <K extends keyof EditProfessorForm>(field: K, value: EditProfessorForm[K]) => {
     setEditProfessorForm((prev) => ({ ...prev, [field]: value }))
-    setEditProfessorFieldErrors((prev) => {
-      const next = { ...prev }
-      delete next[field]
-      return next
-    })
+    clearFieldError(setEditProfessorFieldErrors, field)
     setEditProfessorError("")
   }
 
@@ -1591,15 +1613,14 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   const openProfessorVacationDialog = (professor: Professor) => {
     setSelectedProfessorForVacation(professor)
     setVacationError("")
-    setVacationStartDate("2026-07-01")
-    setVacationEndDate("2026-07-15")
+    setVacationStartDate(DEFAULT_VACATION_START)
+    setVacationEndDate(DEFAULT_VACATION_END)
     setShowProfessorVacationDialog(true)
   }
 
   const openProfessorAgendaQuickAction = (professor: Professor) => {
     const professorClasses = getProfessorAssignedClasses(professor)
-    setActiveSheet("agenda")
-    setSelectedAgendaClassId(professorClasses[0]?.id || null)
+    openAgendaSheet(professorClasses[0]?.id)
   }
 
   const openProfessorPayrollQuickAction = (professor: Professor) => {
@@ -1638,28 +1659,26 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/cadastros/professores/${normalizeDigits(selectedProfessorForVacation.cpf)}/vacation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { response, data } = await requestJson<{ error?: string; id?: string; createdAt?: string }>(
+        `${API_BASE_URL}/api/cadastros/professores/${normalizeDigits(selectedProfessorForVacation.cpf)}/vacation`,
+        jsonRequest("POST", {
           action,
           startDate: vacationStartDate,
           endDate: vacationEndDate,
-        }),
-      })
+        })
+      )
 
-      const responseBody = await response.json().catch(() => ({}))
       if (!response.ok) {
-        setVacationError(responseBody.error || "Falha ao processar ferias.")
+        setVacationError(getErrorMessage(data, "Falha ao processar ferias."))
         return
       }
 
       const entry: VacationHistoryEntry = {
-        id: responseBody.id || `vac-admin-${Date.now()}`,
+        id: data?.id || `vac-admin-${Date.now()}`,
         action,
         startDate: vacationStartDate,
         endDate: vacationEndDate,
-        createdAt: responseBody.createdAt || new Date().toISOString(),
+        createdAt: data?.createdAt || new Date().toISOString(),
       }
 
       setVacationError("")
@@ -1692,27 +1711,23 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   const validateAddStudentForm = (form: AddStudentForm) => {
     const errors: Partial<Record<keyof AddStudentForm, string>> = {}
 
-    const normalizedName = form.name.replace(/\s+/g, " ").trim()
+    const normalizedName = normalizeText(form.name)
     const normalizedCpf = normalizeDigits(form.cpf)
     const normalizedPhone = normalizeDigits(form.phone)
     const normalizedEmail = form.email.trim().toLowerCase()
     const normalizedPlanId = form.planId.trim()
     const age = Number(form.age)
-    const weight = Number(form.weight.replace(",", "."))
+    const weight = Number(normalizeWeightValue(form.weight))
 
-    if (!normalizedName) errors.name = "Nome obrigatorio."
-    else if (normalizedName.length < 3 || normalizedName.length > 100) errors.name = "Nome deve ter entre 3 e 100 letras."
-    else if (!NAME_REGEX.test(normalizedName)) errors.name = "Nome deve conter apenas letras e espacos."
+    const nameError = getNameError(normalizedName)
+    const cpfError = getCpfError(normalizedCpf)
+    const phoneError = getPhoneError(normalizedPhone)
+    const emailError = getEmailError(normalizedEmail)
 
-    if (!normalizedCpf) errors.cpf = "CPF obrigatorio."
-    else if (!isValidCpf(normalizedCpf)) errors.cpf = "CPF invalido. Informe 11 digitos validos."
-
-    if (!normalizedPhone) errors.phone = "Telefone obrigatorio."
-    else if (![10, 11].includes(normalizedPhone.length)) errors.phone = "Telefone deve ter 10 ou 11 digitos (com DDD)."
-
-    if (!normalizedEmail) errors.email = "Email obrigatorio."
-    else if (normalizedEmail.length > 120) errors.email = "Email deve ter no maximo 120 caracteres."
-    else if (!EMAIL_REGEX.test(normalizedEmail)) errors.email = "Email invalido."
+    if (nameError) errors.name = nameError
+    if (cpfError) errors.cpf = cpfError
+    if (phoneError) errors.phone = phoneError
+    if (emailError) errors.email = emailError
 
     if (!form.age.trim()) errors.age = "Idade obrigatoria."
     else if (!Number.isInteger(age) || age < 12 || age > 120) errors.age = "Idade deve ser um numero inteiro entre 12 e 120."
@@ -1736,40 +1751,37 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     }
   }
 
-  const isAddStudentFormComplete =
-    addStudentForm.name.trim() !== "" &&
-    addStudentForm.cpf.trim() !== "" &&
-    addStudentForm.phone.trim() !== "" &&
-    addStudentForm.email.trim() !== "" &&
-    addStudentForm.age.trim() !== "" &&
-    addStudentForm.weight.trim() !== "" &&
-    addStudentForm.planId.trim() !== ""
+  const isAddStudentFormComplete = isFilled(
+    addStudentForm.name,
+    addStudentForm.cpf,
+    addStudentForm.phone,
+    addStudentForm.email,
+    addStudentForm.age,
+    addStudentForm.weight,
+    addStudentForm.planId
+  )
 
   const validateAddProfessorForm = (form: AddProfessorForm) => {
     const errors: Partial<Record<keyof AddProfessorForm, string>> = {}
 
-    const normalizedName = form.name.replace(/\s+/g, " ").trim()
+    const normalizedName = normalizeText(form.name)
     const normalizedCpf = normalizeDigits(form.cpf)
     const normalizedPhone = normalizeDigits(form.phone)
     const normalizedEmail = form.email.trim().toLowerCase()
-    const normalizedSchedule = form.horario.replace(/\s+/g, " ").trim()
+    const normalizedSchedule = normalizeText(form.horario)
     const normalizedSalary = normalizeSalaryValue(form.salario)
-    const normalizedSpeciality = form.speciality.replace(/\s+/g, " ").trim()
+    const normalizedSpeciality = normalizeText(form.speciality)
     const salaryValue = Number(normalizedSalary)
 
-    if (!normalizedName) errors.name = "Nome obrigatorio."
-    else if (normalizedName.length < 3 || normalizedName.length > 100) errors.name = "Nome deve ter entre 3 e 100 letras."
-    else if (!NAME_REGEX.test(normalizedName)) errors.name = "Nome deve conter apenas letras e espacos."
+    const nameError = getNameError(normalizedName)
+    const cpfError = getCpfError(normalizedCpf)
+    const phoneError = getPhoneError(normalizedPhone)
+    const emailError = getEmailError(normalizedEmail)
 
-    if (!normalizedCpf) errors.cpf = "CPF obrigatorio."
-    else if (!isValidCpf(normalizedCpf)) errors.cpf = "CPF invalido. Informe 11 digitos validos."
-
-    if (!normalizedPhone) errors.phone = "Telefone obrigatorio."
-    else if (![10, 11].includes(normalizedPhone.length)) errors.phone = "Telefone deve ter 10 ou 11 digitos (com DDD)."
-
-    if (!normalizedEmail) errors.email = "Email obrigatorio."
-    else if (normalizedEmail.length > 120) errors.email = "Email deve ter no maximo 120 caracteres."
-    else if (!EMAIL_REGEX.test(normalizedEmail)) errors.email = "Email invalido."
+    if (nameError) errors.name = nameError
+    if (cpfError) errors.cpf = cpfError
+    if (phoneError) errors.phone = phoneError
+    if (emailError) errors.email = emailError
 
     if (!normalizedSchedule) errors.horario = "Horario obrigatorio."
     else if (!SCHEDULE_REGEX.test(normalizedSchedule)) errors.horario = "Use o formato HH:MM - HH:MM."
@@ -1809,21 +1821,22 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     }
   }
 
-  const isAddProfessorFormComplete =
-    addProfessorForm.name.trim() !== "" &&
-    addProfessorForm.cpf.trim() !== "" &&
-    addProfessorForm.phone.trim() !== "" &&
-    addProfessorForm.email.trim() !== "" &&
-    addProfessorForm.horario.trim() !== "" &&
-    addProfessorForm.salario.trim() !== "" &&
-    addProfessorForm.speciality.trim() !== ""
+  const isAddProfessorFormComplete = isFilled(
+    addProfessorForm.name,
+    addProfessorForm.cpf,
+    addProfessorForm.phone,
+    addProfessorForm.email,
+    addProfessorForm.horario,
+    addProfessorForm.salario,
+    addProfessorForm.speciality
+  )
 
   const handleAddStudent = async () => {
     const { errors, normalized } = validateAddStudentForm(addStudentForm)
     setAddStudentFieldErrors(errors)
     setAddStudentError("")
 
-    if (Object.keys(errors).length > 0) {
+    if (hasErrors(errors)) {
       setAddStudentError("Preencha corretamente todos os campos obrigatorios para cadastrar o aluno.")
       return
     }
@@ -1841,10 +1854,23 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
 
     try {
       setIsSavingStudent(true)
-      const response = await fetch(`${API_BASE_URL}/api/cadastros/alunos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { response, data } = await requestJson<{
+        error?: string
+        name?: string
+        cpf?: string
+        phone?: string
+        email?: string
+        age?: number
+        weight?: string
+        plan?: string
+        status?: Student["status"]
+        payment?: Student["payment"]
+        vencimento?: string
+        lastPayment?: string
+        temporary_password?: string
+      }>(
+        `${API_BASE_URL}/api/cadastros/alunos`,
+        jsonRequest("POST", {
           nome: normalized.name,
           cpf: normalized.cpf,
           telefone: normalized.phone,
@@ -1852,34 +1878,33 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
           idade: normalized.age,
           peso: normalized.weight,
           plano: selectedPlan.name.replace(/^Plano\s+/i, ""),
-        }),
-      })
+        })
+      )
 
-      const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(payload.error || "Falha ao salvar aluno no banco de dados.")
+        throw new Error(getErrorMessage(data, "Falha ao salvar aluno no banco de dados."))
       }
 
       const createdStudent: Student = {
-        name: payload.name || normalized.name,
-        cpf: payload.cpf || formatCpf(normalized.cpf),
-        phone: payload.phone || formatPhone(normalized.phone),
-        email: payload.email || normalized.email,
-        age: payload.age || normalized.age,
-        weight: payload.weight || `${normalized.weight.toFixed(1)}kg`,
-        plan: payload.plan || selectedPlan.name.replace(/^Plano\s+/i, ""),
-        status: payload.status || "ativo",
-        payment: payload.payment || "em-dia",
-        vencimento: payload.vencimento || "-",
-        lastPayment: payload.lastPayment || "-",
+        name: data?.name || normalized.name,
+        cpf: data?.cpf || formatCpf(normalized.cpf),
+        phone: data?.phone || formatPhone(normalized.phone),
+        email: data?.email || normalized.email,
+        age: data?.age || normalized.age,
+        weight: data?.weight || `${normalized.weight.toFixed(1)}kg`,
+        plan: data?.plan || selectedPlan.name.replace(/^Plano\s+/i, ""),
+        status: data?.status || "ativo",
+        payment: data?.payment || "em-dia",
+        vencimento: data?.vencimento || "-",
+        lastPayment: data?.lastPayment || "-",
       }
 
       setAllStudents((prev) => [createdStudent, ...prev])
-      if (payload.temporary_password) {
+      if (data?.temporary_password) {
         setCreatedStudentCredentials({
           name: createdStudent.name,
           cpf: createdStudent.cpf,
-          temporaryPassword: payload.temporary_password,
+          temporaryPassword: data.temporary_password,
         })
       }
       onAddStudentDialogChange(false)
@@ -1896,7 +1921,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     setAddProfessorFieldErrors(errors)
     setAddProfessorError("")
 
-    if (Object.keys(errors).length > 0) {
+    if (hasErrors(errors)) {
       setAddProfessorError("Preencha corretamente todos os campos obrigatorios para cadastrar o professor.")
       return
     }
@@ -1908,10 +1933,21 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
 
     try {
       setIsSavingProfessor(true)
-      const response = await fetch(`${API_BASE_URL}/api/cadastros/professores`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { response, data } = await requestJson<{
+        error?: string
+        name?: string
+        cpf?: string
+        speciality?: string
+        students?: number
+        status?: ProfessorStatus
+        phone?: string
+        email?: string
+        horario?: string
+        salario?: string
+        modalidades?: string[]
+      }>(
+        `${API_BASE_URL}/api/cadastros/professores`,
+        jsonRequest("POST", {
           nome: normalized.name,
           cpf: normalized.cpf,
           telefone: normalized.phone,
@@ -1919,24 +1955,24 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
           horario: normalized.horario,
           salario: normalized.salario,
           especialidade: normalized.speciality,
-        }),
-      })
-      const payload = await response.json().catch(() => ({}))
+        })
+      )
+
       if (!response.ok) {
-        throw new Error(payload.error || "Falha ao salvar professor no banco de dados.")
+        throw new Error(getErrorMessage(data, "Falha ao salvar professor no banco de dados."))
       }
 
       const createdProfessor: Professor = {
-        name: payload.name || normalized.name,
-        cpf: payload.cpf || formatCpf(normalized.cpf),
-        speciality: payload.speciality || normalized.speciality,
-        students: payload.students || 0,
-        status: payload.status || "ativo",
-        phone: payload.phone || formatPhone(normalized.phone),
-        email: payload.email || normalized.email,
-        horario: payload.horario || normalized.horario,
-        salario: payload.salario || normalized.salario,
-        modalidades: payload.modalidades || [normalized.speciality],
+        name: data?.name || normalized.name,
+        cpf: data?.cpf || formatCpf(normalized.cpf),
+        speciality: data?.speciality || normalized.speciality,
+        students: data?.students || 0,
+        status: data?.status || "ativo",
+        phone: data?.phone || formatPhone(normalized.phone),
+        email: data?.email || normalized.email,
+        horario: data?.horario || normalized.horario,
+        salario: data?.salario || normalized.salario,
+        modalidades: data?.modalidades || [normalized.speciality],
       }
 
       setAllProfessors((prev) => [createdProfessor, ...prev])
@@ -1956,17 +1992,28 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     setEditProfessorFieldErrors(errors)
     setEditProfessorError("")
 
-    if (Object.keys(errors).length > 0) {
+    if (hasErrors(errors)) {
       setEditProfessorError("Revise os campos do professor antes de salvar.")
       return
     }
 
     try {
       setIsUpdatingProfessor(true)
-      const response = await fetch(`${API_BASE_URL}/api/cadastros/professores/${normalizeDigits(selectedProfessor.cpf)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { response, data } = await requestJson<{
+        error?: string
+        name?: string
+        cpf?: string
+        speciality?: string
+        students?: number
+        status?: ProfessorStatus
+        phone?: string
+        email?: string
+        horario?: string
+        salario?: string
+        modalidades?: string[]
+      }>(
+        `${API_BASE_URL}/api/cadastros/professores/${normalizeDigits(selectedProfessor.cpf)}`,
+        jsonRequest("PUT", {
           nome: normalized.name,
           cpf: normalized.cpf,
           telefone: normalized.phone,
@@ -1975,25 +2022,24 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
           salario: normalized.salario,
           especialidade: normalized.speciality,
           status: normalized.status,
-        }),
-      })
+        })
+      )
 
-      const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(payload.error || "Falha ao atualizar professor.")
+        throw new Error(getErrorMessage(data, "Falha ao atualizar professor."))
       }
 
       const updatedProfessor: Professor = {
-        name: payload.name || normalized.name,
-        cpf: payload.cpf || formatCpf(normalized.cpf),
-        speciality: payload.speciality || normalized.speciality,
-        students: payload.students || selectedProfessor.students,
-        status: payload.status || normalized.status,
-        phone: payload.phone || formatPhone(normalized.phone),
-        email: payload.email || normalized.email,
-        horario: payload.horario || normalized.horario,
-        salario: payload.salario || normalized.salario,
-        modalidades: payload.modalidades || [normalized.speciality],
+        name: data?.name || normalized.name,
+        cpf: data?.cpf || formatCpf(normalized.cpf),
+        speciality: data?.speciality || normalized.speciality,
+        students: data?.students || selectedProfessor.students,
+        status: data?.status || normalized.status,
+        phone: data?.phone || formatPhone(normalized.phone),
+        email: data?.email || normalized.email,
+        horario: data?.horario || normalized.horario,
+        salario: data?.salario || normalized.salario,
+        modalidades: data?.modalidades || [normalized.speciality],
       }
 
       setAllProfessors((prev) =>
@@ -2015,24 +2061,21 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   const totalDespesas = financeEntries.filter((entry) => entry.type === "despesa").reduce((sum, entry) => sum + entry.amount, 0)
   const saldoFinanceiro = totalReceitas - totalDespesas
   const groupedFinanceEntries = sortedFinanceEntries.reduce<Record<string, FinanceEntry[]>>((acc, entry) => {
-    const monthLabel = new Date(`${entry.date}T00:00:00`).toLocaleDateString("pt-BR", {
-      month: "long",
-      year: "numeric",
-    })
+    const monthLabel = formatMonthYearLabel(entry.date)
     acc[monthLabel] = [...(acc[monthLabel] || []), entry]
     return acc
   }, {})
   const receiptChartMax = Math.max(receiptsSummary.previsto, receiptsSummary.realizado, 1)
   const previstoBarWidth = `${Math.max((receiptsSummary.previsto / receiptChartMax) * 100, 12)}%`
   const realizadoBarWidth = `${Math.max((receiptsSummary.realizado / receiptChartMax) * 100, 12)}%`
-  const payrollAdjustedEntriesCount = payrollEntries.filter((entry) => Math.abs(entry.adjustedAmount - entry.baseAmount) > 0.009 || entry.status === "ajustado").length
+  const payrollAdjustedEntriesCount = countAdjustedPayrollEntries(payrollEntries)
 
   const handleSaveFinanceEntry = async () => {
     if (!financeDialog) return
 
-    const description = financeForm.description.trim()
-    const category = financeForm.category.trim()
-    const amount = Number(normalizeSalaryValue(financeForm.value))
+    const description = normalizeText(financeForm.description)
+    const category = normalizeText(financeForm.category)
+    const amount = parseMoneyValue(financeForm.value)
     const date = financeForm.date
 
     if (!description || !category || !date || !Number.isFinite(amount) || amount <= 0) {
@@ -2041,28 +2084,26 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     }
 
     const entryType: FinanceEntryType = financeDialog === "despesa" ? "despesa" : "receita"
-    
+
     try {
-      const response = await fetch(`${API_BASE_URL}/api/finance/entries`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { response, data } = await requestJson<{ error?: string; id?: string }>(
+        `${API_BASE_URL}/api/finance/entries`,
+        jsonRequest("POST", {
           description,
           category,
           amount,
           date,
           type: entryType,
-        }),
-      })
+        })
+      )
 
-      const responseBody = await response.json().catch(() => ({}))
       if (!response.ok) {
-        setFinanceFormError(responseBody.error || "Nao foi possivel salvar a entrada financeira.")
+        setFinanceFormError(getErrorMessage(data, "Nao foi possivel salvar a entrada financeira."))
         return
       }
 
       const savedEntry: FinanceEntry = {
-        id: responseBody.id || `fin-${Date.now()}`,
+        id: data?.id || `fin-${Date.now()}`,
         type: entryType,
         description,
         category,
@@ -2074,7 +2115,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
       setFinanceDialog(null)
       setFinanceForm({
         ...EMPTY_FINANCE_FORM,
-        date: new Date().toISOString().slice(0, 10),
+        date: getTodayIso(),
       })
       setFinanceFormError("")
     } catch {
@@ -2085,7 +2126,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   const handleSavePayrollAdjustment = async () => {
     if (!selectedPayrollEntry) return
 
-    const adjustedAmount = Number(normalizeSalaryValue(payrollAdjustmentForm.amount))
+    const adjustedAmount = parseMoneyValue(payrollAdjustmentForm.amount)
     if (!Number.isFinite(adjustedAmount) || adjustedAmount <= 0 || !payrollAdjustmentForm.dueDate) {
       setPayrollAdjustmentError("Informe um valor valido e a data ajustada do pagamento.")
       return
@@ -2093,39 +2134,31 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
 
     try {
       setIsSavingPayrollAdjustment(true)
-      const response = await fetch(`${API_BASE_URL}/api/finance/payroll/${selectedPayrollEntry.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { response, data } = await requestJson<PayrollEntry & { error?: string }>(
+        `${API_BASE_URL}/api/finance/payroll/${selectedPayrollEntry.id}`,
+        jsonRequest("PUT", {
           adjusted_amount: adjustedAmount,
           due_date: payrollAdjustmentForm.dueDate,
           notes: payrollAdjustmentForm.notes,
           status: "ajustado",
-        }),
-      })
+        })
+      )
 
-      const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(payload.error || "Falha ao ajustar a folha de pagamento.")
+        throw new Error(getErrorMessage(data, "Falha ao ajustar a folha de pagamento."))
+      }
+
+      if (!data) {
+        throw new Error("Falha ao ajustar a folha de pagamento.")
       }
 
       setPayrollEntries((prev) => {
-        const nextEntries = prev.map((entry) => (entry.id === payload.id ? payload : entry))
-        const totalBase = nextEntries.reduce((sum, entry) => sum + entry.baseAmount, 0)
-        const totalAdjusted = nextEntries.reduce((sum, entry) => sum + entry.adjustedAmount, 0)
-        const adjustedCount = nextEntries.filter((entry) => Math.abs(entry.adjustedAmount - entry.baseAmount) > 0.009 || entry.status === "ajustado").length
-
-        setPayrollSummary({
-          totalBase,
-          totalBaseLabel: formatCurrency(totalBase),
-          totalAdjusted,
-          totalAdjustedLabel: formatCurrency(totalAdjusted),
-          adjustedCount,
-        })
+        const nextEntries = prev.map((entry) => (entry.id === data.id ? data : entry))
+        setPayrollSummary(buildPayrollSummary(nextEntries))
         return nextEntries
       })
       setShowPayrollAdjustDialog(false)
-      setSelectedPayrollEntry(payload)
+      setSelectedPayrollEntry(data)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao ajustar a folha."
       setPayrollAdjustmentError(message)
@@ -2135,50 +2168,157 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   }
 
   const handleRegisterPayment = async (student: Student) => {
+    const amount = parseMoneyValue(paymentAmount)
+    const reference = normalizeText(paymentReference) || getCurrentReference()
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setPaymentError("Informe um valor valido para registrar o pagamento.")
+      return
+    }
+
     setPaymentError("")
     setIsRegisteringPayment(true)
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/finance/payments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { response, data } = await requestJson<{
+        error?: string
+        student?: Student
+        receipt?: AutomatedReceipt
+        summary?: ReceiptsSummary
+      }>(
+        `${API_BASE_URL}/api/finance/payments`,
+        jsonRequest("POST", {
           studentCpf: normalizeDigits(student.cpf),
           studentName: student.name,
-          amount: student.lastPayment ? parseFloat(student.lastPayment.replace(/\D/g, "")) / 100 : 0,
-          paymentDate: new Date().toISOString().split("T")[0],
-          reference: new Date().toISOString().slice(0, 7),
-        }),
-      })
+          amount,
+          paymentMethod,
+          paymentDate: getTodayIso(),
+          reference,
+        })
+      )
 
-      const responseBody = await response.json().catch(() => ({}))
       if (!response.ok) {
-        setPaymentError(responseBody.error || "Falha ao registrar pagamento.")
+        setPaymentError(getErrorMessage(data, "Falha ao registrar pagamento."))
         return
       }
 
-      // Atualiza o aluno com novo status
-      const updatedStudent: Student = {
-        ...student,
-        payment: "em-dia",
-        lastPayment: new Date().toLocaleDateString("pt-BR"),
-      }
+      const updatedStudent: Student = data?.student
+        ? { ...student, ...data.student }
+        : {
+            ...student,
+            payment: "em-dia",
+            lastPayment: formatDateLabel(getTodayIso()),
+          }
 
       setAllStudents((prev) =>
         prev.map((s) => (normalizeDigits(s.cpf) === normalizeDigits(student.cpf) ? updatedStudent : s))
       )
+      if (data?.receipt) {
+        setAutomatedReceipts((prev) => [data.receipt!, ...prev.filter((item) => item.id !== data.receipt!.id)].slice(0, 8))
+      }
+      if (data?.summary) {
+        setReceiptsSummary(data.summary)
+      }
 
       if (selectedStudent && normalizeDigits(selectedStudent.cpf) === normalizeDigits(student.cpf)) {
         setSelectedStudent(updatedStudent)
       }
 
       setShowPaymentDialog(false)
+      resetPaymentDialog()
     } catch {
       setPaymentError("Nao foi possivel conectar com a API de pagamentos.")
     } finally {
       setIsRegisteringPayment(false)
     }
   }
+
+  // Consolida os cards em dados derivados para evitar estados duplicados.
+  const activeStudentsCount = allStudents.filter((student) => student.status === "ativo").length
+  const activeProfessorsCount = activeProfessorsForAgenda.length
+  const studentsWithoutClassCount = allStudents.filter((student) => getStudentAssignedClasses(student).length === 0).length
+  const totalAgendaCapacity = agendaToday.reduce((sum, agendaClass) => sum + agendaClass.capacity, 0)
+  const totalOccupiedSpots = agendaToday.reduce((sum, agendaClass) => sum + agendaClass.students.length, 0)
+  const occupancyRate = getPercent(totalOccupiedSpots, totalAgendaCapacity)
+  const complianceRate = getPercent(
+    allStudents.filter((student) => student.status === "ativo" && student.payment === "em-dia").length,
+    activeStudentsCount
+  )
+  const stats = [
+    { label: "Alunos Ativos", value: String(activeStudentsCount), icon: Users, change: `${atrasados} em atraso` },
+    { label: "Professores Ativos", value: String(activeProfessorsCount), icon: Dumbbell, change: `${professorsOnVacationCount} em ferias` },
+    {
+      label: "Receita Confirmada",
+      value: receiptsSummary.realizado > 0 ? receiptsSummary.realizadoLabel : formatCurrency(totalReceitas),
+      icon: DollarSign,
+      change: `${receiptsSummary.statusTotals.pago} pagamento(s)`,
+    },
+    { label: "Turmas Hoje", value: String(agendaToday.length), icon: TrendingUp, change: `${occupancyRate}% ocupacao` },
+  ]
+  const recentActions = [
+    ...automatedReceipts.slice(0, 3).map((receipt) => ({
+      id: `receipt-${receipt.id}`,
+      action: receipt.status === "pago" ? "Pagamento confirmado" : receipt.status === "atrasado" ? "Recebimento atrasado" : "Recebimento pendente",
+      name: `${receipt.studentName} • ${receipt.amountLabel}`,
+      time: receipt.paidAt ? getRecentTimeLabel(receipt.paidAt) : getRecentTimeLabel(receipt.createdAt),
+    })),
+    ...agendaToday.slice(0, 2).map((agendaClass) => ({
+      id: `class-${agendaClass.id}`,
+      action: `Turma ${agendaClass.event}`,
+      name: `${agendaClass.professor} • ${agendaClass.room}`,
+      time: agendaClass.time,
+    })),
+    ...overdueStudents.slice(0, 1).map((student) => ({
+      id: `late-${normalizeDigits(student.cpf)}`,
+      action: "Mensalidade atrasada",
+      name: student.name,
+      time: student.vencimento || "Sem vencimento",
+    })),
+  ].slice(0, 6)
+  const financialData = Object.entries(
+    financeEntries.reduce<Record<string, { receita: number; despesas: number }>>((acc, entry) => {
+      const monthKey = entry.date.slice(0, 7)
+      const current = acc[monthKey] || { receita: 0, despesas: 0 }
+
+      current[entry.type === "receita" ? "receita" : "despesas"] += entry.amount
+      acc[monthKey] = current
+      return acc
+    }, {})
+  )
+    .sort(([monthA], [monthB]) => monthB.localeCompare(monthA))
+    .slice(0, 6)
+    .map(([month, values]) => ({
+      month: formatMonthYearLabel(month),
+      receita: formatCurrency(values.receita),
+      despesas: formatCurrency(values.despesas),
+      lucro: formatCurrency(values.receita - values.despesas),
+      status: values.receita - values.despesas >= 0 ? "positivo" : "alerta",
+    }))
+  const reports = [
+    {
+      title: "Adimplencia",
+      description: `${atrasados} aluno(s) exigem acao de cobranca no momento.`,
+      value: `${complianceRate}%`,
+      trend: atrasados > 0 ? `-${atrasados}` : "+0",
+    },
+    {
+      title: "Ocupacao das Turmas",
+      description: `${totalOccupiedSpots} vaga(s) ocupadas em ${agendaToday.length} turma(s) da agenda atual.`,
+      value: `${occupancyRate}%`,
+      trend: agendaToday.length ? `${agendaToday.length} hoje` : "",
+    },
+    {
+      title: "Planos em Operacao",
+      description: `${inactivePlans.length} plano(s) permanecem inativos para venda ou realocacao.`,
+      value: String(activePlans.length),
+      trend: inactivePlans.length ? `-${inactivePlans.length}` : "+0",
+    },
+    {
+      title: "Folha Ajustada",
+      description: `${payrollAdjustedEntriesCount} lancamento(s) tiveram ajuste manual neste ciclo.`,
+      value: payrollSummary.totalAdjustedLabel,
+      trend: payrollAdjustedEntriesCount ? `+${payrollAdjustedEntriesCount}` : "",
+    },
+  ]
 
   return (
     <div className="min-h-screen bg-background">
@@ -2356,15 +2496,19 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
             </CardHeader>
             <CardContent>
               <div className="flex flex-col gap-4">
-                {recentActions.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between border-b border-border pb-3 last:border-0 last:pb-0">
+                {recentActions.length > 0 ? recentActions.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between border-b border-border pb-3 last:border-0 last:pb-0">
                     <div>
                       <p className="text-sm font-medium text-foreground">{item.action}</p>
                       <p className="text-xs text-muted-foreground">{item.name}</p>
                     </div>
                     <span className="text-xs text-muted-foreground">{item.time}</span>
                   </div>
-                ))}
+                )) : (
+                  <div className="rounded-xl border border-dashed border-border bg-secondary/60 p-4 text-sm text-muted-foreground">
+                    Nenhuma atividade recente registrada no momento.
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -2381,11 +2525,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
                 {quickActions.map((item) => (
                   <button
                     key={item.label}
-                    onClick={() => {
-                      setSearchQuery("")
-                      setStudentFilter("todos")
-                      setActiveSheet(item.sheet)
-                    }}
+                    onClick={() => item.sheet && openDashboardSheet(item.sheet)}
                     className="flex items-center gap-3 rounded-lg border border-border bg-secondary p-3 text-sm text-foreground transition-colors hover:border-primary/30 hover:bg-secondary/80"
                   >
                     <item.icon className="h-4 w-4 text-primary" />
@@ -2484,16 +2624,16 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
 
             <div className="mb-3 flex items-center justify-between">
               <p className="text-sm font-medium text-foreground">Lista de alunos</p>
-              <p className="text-xs text-muted-foreground">{filteredStudents.length} resultado(s)</p>
+              <p className="text-xs text-muted-foreground">{studentsTotal} resultado(s)</p>
             </div>
 
             <div className="grid gap-3 xl:grid-cols-2">
-              {filteredStudents.length === 0 ? (
+              {paginatedStudents.length === 0 ? (
                 <div className="col-span-full rounded-2xl border border-dashed border-border bg-secondary/60 py-10 text-center text-sm text-muted-foreground">
                   Nenhum aluno encontrado.
                 </div>
               ) : (
-                filteredStudents.map((student, i) => {
+                paginatedStudents.map((student, i) => {
                   const primaryClass = getStudentPrimaryClass(student)
                   const assignedClasses = getStudentAssignedClasses(student)
                   return (
@@ -2559,6 +2699,17 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
                   )
                 })
               )}
+            </div>
+
+            <div className="mt-4 flex items-center justify-center">
+              <PaginationControls
+                page={studentsPage}
+                pageSize={STUDENTS_PAGE_SIZE}
+                total={studentsTotal}
+                onNext={studentsNextPage}
+                onPrev={studentsPrevPage}
+                isLoading={studentsLoading}
+              />
             </div>
           </div>
         </SheetContent>
@@ -2848,7 +2999,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
                 <div>
                   <p className="text-sm font-medium text-foreground">Folha de Pagamento dos Professores</p>
                   <p className="text-xs text-muted-foreground">
-                    Referencia {payrollReference || new Date().toISOString().slice(0, 7)} com vencimento padrao no 5o dia util ({defaultPayrollDueDate || "-"})
+                    Referencia {currentPayrollReference} com vencimento padrao no 5o dia util ({defaultPayrollDueDate || "-"})
                   </p>
                 </div>
                 <Badge variant="outline" className="border-[oklch(0.65_0.18_250)]/30 text-[oklch(0.65_0.18_250)]">
@@ -2963,7 +3114,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
               </div>
 
               <div className="flex flex-col gap-3">
-                {automatedReceipts.map((receipt) => (
+                {automatedReceipts.length > 0 ? automatedReceipts.map((receipt) => (
                   <div key={receipt.id} className="rounded-lg border border-border bg-background/60 p-3">
                     <div className="mb-2 flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -2997,7 +3148,11 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
                       </div>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <div className="rounded-lg border border-dashed border-border bg-background/40 p-4 text-sm text-muted-foreground">
+                    Nenhum recebimento recente foi encontrado.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -3013,7 +3168,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
               </div>
 
               <div className="flex flex-col gap-4">
-                {Object.entries(groupedFinanceEntries).map(([month, entries]) => (
+                {Object.entries(groupedFinanceEntries).length > 0 ? Object.entries(groupedFinanceEntries).map(([month, entries]) => (
                   <div key={month} className="rounded-lg border border-border/60 bg-background/60 p-3">
                     <p className="mb-3 text-sm font-medium capitalize text-foreground">{month}</p>
                     <div className="flex flex-col gap-2">
@@ -3035,7 +3190,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
                               </Badge>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              {entry.category} • {new Date(`${entry.date}T00:00:00`).toLocaleDateString("pt-BR")}
+                              {entry.category} • {formatDateLabel(entry.date)}
                             </p>
                           </div>
                           <p className={`text-sm font-semibold font-mono ${entry.type === "receita" ? "text-primary" : "text-destructive"}`}>
@@ -3045,16 +3200,20 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
                       ))}
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <div className="rounded-lg border border-dashed border-border bg-background/40 p-4 text-sm text-muted-foreground">
+                    Nenhum lancamento foi registrado no extrato ainda.
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="rounded-lg border border-border bg-secondary p-4">
               <p className="mb-3 text-sm font-medium text-foreground">Resumo mensal</p>
               <div className="flex flex-col gap-3">
-                {financialData.map((item, i) => (
-                  <div key={i} className="rounded-lg border border-border bg-background/60 p-3">
-                    <p className="text-sm font-medium text-foreground mb-2">{item.month}</p>
+                {financialData.length > 0 ? financialData.map((item) => (
+                  <div key={item.month} className="rounded-lg border border-border bg-background/60 p-3">
+                    <p className="mb-2 text-sm font-medium text-foreground">{item.month}</p>
                     <div className="grid grid-cols-3 gap-2">
                       <div>
                         <p className="text-xs text-muted-foreground">Receita</p>
@@ -3066,11 +3225,15 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Lucro</p>
-                        <p className="text-sm font-mono text-primary">{item.lucro}</p>
+                        <p className={`text-sm font-mono ${item.status === "positivo" ? "text-primary" : "text-destructive"}`}>{item.lucro}</p>
                       </div>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <div className="rounded-lg border border-dashed border-border bg-background/40 p-4 text-sm text-muted-foreground">
+                    O resumo mensal sera preenchido quando houver receitas ou despesas manuais.
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -3142,8 +3305,8 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
           </SheetHeader>
           <div className="px-4 pb-4">
             <div className="flex flex-col gap-3">
-              {reports.map((report, i) => (
-                <div key={i} className="rounded-lg border border-border bg-secondary p-4">
+              {reports.map((report) => (
+                <div key={report.title} className="rounded-lg border border-border bg-secondary p-4">
                   <div className="flex items-center justify-between mb-1">
                     <p className="text-sm font-medium text-foreground">{report.title}</p>
                     <div className="flex items-baseline gap-1">
@@ -3566,9 +3729,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
 
               <DialogFooter className="border-t border-border pt-4 flex gap-2 sm:gap-2">
                 <Button
-                  onClick={() => {
-                    setShowPaymentDialog(true)
-                  }}
+                  onClick={() => openPaymentDialog(selectedStudent)}
                   className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
                 >
                   <CreditCard className="h-4 w-4" />
@@ -3911,12 +4072,12 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
                     <SelectValue placeholder="Selecione o plano" />
                   </SelectTrigger>
                   <SelectContent className="bg-card border-border">
-                    {availablePlans.map((p) => (
+                    {activePlans.map((p) => (
                       <SelectItem key={p.id} value={p.id} className="text-foreground">{p.name} - {p.price}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {availablePlans.length === 0 && <p className="text-xs text-muted-foreground">Nenhum plano ativo disponivel para novos alunos.</p>}
+                {activePlans.length === 0 && <p className="text-xs text-muted-foreground">Nenhum plano ativo disponivel para novos alunos.</p>}
                 {addStudentFieldErrors.planId && <p className="text-xs text-destructive">{addStudentFieldErrors.planId}</p>}
               </div>
             </div>
@@ -4215,9 +4376,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
         open={showPaymentDialog}
         onOpenChange={(open) => {
           setShowPaymentDialog(open)
-          if (!open) {
-            setPaymentAmount("R$ 0,00")
-          }
+          if (!open) resetPaymentDialog()
         }}
       >
         <DialogContent className="bg-card border-border text-foreground sm:max-w-sm">
@@ -4240,7 +4399,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label className="text-foreground text-xs">Forma de Pagamento</Label>
-              <Select>
+              <Select value={paymentMethod} onValueChange={(value: PaymentMethod) => setPaymentMethod(value)}>
                 <SelectTrigger className="bg-secondary border-border text-foreground">
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
@@ -4254,16 +4413,26 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label className="text-foreground text-xs">Referencia</Label>
-              <Input placeholder="Mensalidade Mar/2026" className="bg-secondary border-border text-foreground placeholder:text-muted-foreground" />
+              <Input
+                placeholder="2026-04"
+                value={paymentReference}
+                onChange={(e) => setPaymentReference(e.target.value)}
+                className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
+              />
             </div>
           </div>
+          {paymentError && <p className="text-sm text-destructive">{paymentError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowPaymentDialog(false)} className="border-border text-foreground hover:bg-secondary">
               Cancelar
             </Button>
-            <Button onClick={() => setShowPaymentDialog(false)} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+            <Button
+              onClick={() => selectedStudent && handleRegisterPayment(selectedStudent)}
+              disabled={!selectedStudent || isRegisteringPayment}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
+            >
               <CreditCard className="h-4 w-4" />
-              Confirmar
+              {isRegisteringPayment ? "Registrando..." : "Confirmar"}
             </Button>
           </DialogFooter>
         </DialogContent>

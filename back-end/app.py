@@ -10,13 +10,36 @@ import secrets
 import smtplib
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 from email.message import EmailMessage
 
 from dotenv import load_dotenv 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.exceptions import HTTPException
+from sqlalchemy.orm import selectinload
+from sqlalchemy import or_
+try:
+    # Register pydantic-related handler only if pydantic is installed.
+    from pydantic import ValidationError as PydanticValidationError
+except Exception:
+    PydanticValidationError = None
+
+from validators import validate_request
+from schemas import (
+    AlunoCreate,
+    AlunoUpdate,
+    ProfessorCreate,
+    ProfessorUpdate,
+    PlanoCreate,
+    PlanoUpdate,
+    TurmaCreate,
+    TurmaUpdate,
+    PaymentCreate,
+    EntryCreate,
+)
 
 load_dotenv()
 
@@ -27,38 +50,74 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'fitpro-dev-key')
 db = SQLAlchemy(app)
 
+# Configuracao otimizada de CORS para o front-end
+# Origem(s) permitida(s) devem ser definidas via variavel de ambiente `NEXTJS_ORIGINS`
+# Exemplo: NEXTJS_ORIGINS=http://localhost:3000,https://meu-site.com
+frontend_origins = os.getenv('NEXTJS_ORIGINS') or os.getenv('FRONTEND_URL') or 'http://localhost:3000'
+allowed_origins = [o.strip() for o in frontend_origins.split(',') if o.strip()]
+
+CORS(
+    app,
+    resources={
+        r'/api/*': {
+            'origins': allowed_origins,
+            'methods': ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+            'allow_headers': ['Content-Type', 'Authorization', 'X-Requested-With'],
+            'expose_headers': ['Content-Type', 'X-Total-Count'],
+            'supports_credentials': os.getenv('CORS_SUPPORTS_CREDENTIALS', 'false').lower() == 'true',
+            'max_age': int(os.getenv('CORS_MAX_AGE', '3600')),
+        }
+    },
+    send_wildcard=False,
+)
+
 RESET_CODE_EXPIRATION_MINUTES = int(os.getenv('RESET_CODE_EXPIRATION_MINUTES', '10'))
 SPECIAL_TEST_CPF = '54514214809'
 SPECIAL_TEST_PASSWORD = '123456789'
-ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv(
-        'CORS_ALLOW_ORIGINS',
-        'http://localhost:3000,http://127.0.0.1:3000',
-    ).split(',')
-    if origin.strip()
-]
 DEV_FAKE_NOTIFICATIONS = os.getenv('DEV_FAKE_NOTIFICATIONS', 'true').lower() == 'true'
 
 
 # -------------------------
 # MODELOS (camada de dados)
 # -------------------------
-class Aluno(db.Model):
+class SafeModelMixin:
+    """Mixin que expõe um `to_dict()` seguro usando `__public_fields__`.
+
+    Evita expor atributos sensiveis (ex.: hashes) por omissao e converte
+    `date`/`datetime` para strings ISO.
+    """
+    __public_fields__ = []
+
+    def to_dict(self, include=None, exclude=None):
+        include = include if include is not None else getattr(self, '__public_fields__', [])
+        exclude = set(exclude or [])
+        result = {}
+        for key in include:
+            if key in exclude:
+                continue
+            value = getattr(self, key, None)
+            if isinstance(value, (datetime, date)):
+                result[key] = value.isoformat()
+            else:
+                result[key] = value
+        return result
+class Aluno(SafeModelMixin, db.Model):
     # Identificador unico do aluno.
     id = db.Column(db.Integer, primary_key=True)
     # Nome exibido no dashboard e nas listagens.
     nome = db.Column(db.String(100), nullable=False)
+    __public_fields__ = ['id', 'nome']
 
 
-class Plano(db.Model):
+class Plano(SafeModelMixin, db.Model):
     # Identificador unico do plano.
     id = db.Column(db.Integer, primary_key=True)
     # Campo textual para descrever o tipo do plano.
     descricao = db.Column(db.String(100), nullable=False)
+    __public_fields__ = ['id', 'descricao']
 
 
-class PlanoAcademia(db.Model):
+class PlanoAcademia(SafeModelMixin, db.Model):
     # Catalogo persistido de planos disponiveis na academia.
     __tablename__ = 'planos_academia'
     id = db.Column(db.Integer, primary_key=True)
@@ -70,9 +129,12 @@ class PlanoAcademia(db.Model):
     ativo = db.Column(db.Boolean, nullable=False, default=True)
     criado_em = db.Column(db.DateTime, nullable=False, default=datetime.now)
     atualizado_em = db.Column(db.DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
+    __public_fields__ = [
+        'id', 'nome', 'preco', 'duracao', 'modalidades', 'beneficios', 'ativo', 'criado_em', 'atualizado_em'
+    ]
 
 
-class AlunoCadastro(db.Model):
+class AlunoCadastro(SafeModelMixin, db.Model):
     # Registro completo de aluno cadastrado pelo painel administrativo.
     __tablename__ = 'alunos_cadastro'
     id = db.Column(db.Integer, primary_key=True)
@@ -88,9 +150,13 @@ class AlunoCadastro(db.Model):
     vencimento = db.Column(db.String(20), nullable=False, default='-')
     ultimo_pagamento = db.Column(db.String(20), nullable=False, default='-')
     criado_em = db.Column(db.DateTime, nullable=False, default=datetime.now)
+    __public_fields__ = [
+        'id', 'nome', 'cpf', 'telefone', 'email', 'idade', 'peso', 'plano', 'status',
+        'pagamento', 'vencimento', 'ultimo_pagamento', 'criado_em'
+    ]
 
 
-class ProfessorCadastro(db.Model):
+class ProfessorCadastro(SafeModelMixin, db.Model):
     # Registro completo de professor cadastrado pelo painel administrativo.
     __tablename__ = 'professores_cadastro'
     id = db.Column(db.Integer, primary_key=True)
@@ -104,9 +170,13 @@ class ProfessorCadastro(db.Model):
     status = db.Column(db.String(20), nullable=False, default='ativo')
     alunos_ativos = db.Column(db.Integer, nullable=False, default=0)
     criado_em = db.Column(db.DateTime, nullable=False, default=datetime.now)
+    __public_fields__ = [
+        'id', 'nome', 'cpf', 'telefone', 'email', 'horario', 'salario', 'especialidade',
+        'status', 'alunos_ativos', 'criado_em'
+    ]
 
 
-class TurmaAgenda(db.Model):
+class TurmaAgenda(SafeModelMixin, db.Model):
     # Cadastro persistido de turmas/horarios da agenda.
     __tablename__ = 'turmas_agenda'
     id = db.Column(db.String(20), primary_key=True)
@@ -117,9 +187,10 @@ class TurmaAgenda(db.Model):
     sala = db.Column(db.String(50), nullable=False)
     capacidade = db.Column(db.Integer, nullable=False)
     criado_em = db.Column(db.DateTime, nullable=False, default=datetime.now)
+    __public_fields__ = ['id', 'horario', 'evento', 'professor', 'professor_status', 'sala', 'capacidade', 'criado_em']
 
 
-class TurmaAluno(db.Model):
+class TurmaAluno(SafeModelMixin, db.Model):
     # Vinculo entre aluno e turma para listagem/realocacao da agenda.
     __tablename__ = 'turmas_alunos'
     id = db.Column(db.Integer, primary_key=True)
@@ -132,9 +203,10 @@ class TurmaAluno(db.Model):
 
     turma = db.relationship('TurmaAgenda', backref=db.backref('alunos', lazy=True, cascade='all, delete-orphan'))
     aluno = db.relationship('AlunoCadastro', backref=db.backref('turmas_vinculadas', lazy=True))
+    __public_fields__ = ['id', 'turma_id', 'aluno_id', 'aluno_nome', 'pagamento', 'presente', 'criado_em']
 
 
-class RecebimentoAluno(db.Model):
+class RecebimentoAluno(SafeModelMixin, db.Model):
     # Registro financeiro automatizado de mensalidades/recebimentos do aluno.
     __tablename__ = 'recebimentos_alunos'
     id = db.Column(db.Integer, primary_key=True)
@@ -152,9 +224,13 @@ class RecebimentoAluno(db.Model):
     criado_em = db.Column(db.DateTime, nullable=False, default=datetime.now)
 
     aluno = db.relationship('AlunoCadastro', backref=db.backref('recebimentos', lazy=True))
+    __public_fields__ = [
+        'id', 'aluno_id', 'aluno_nome', 'aluno_cpf', 'referencia', 'descricao', 'provider',
+        'external_id', 'status', 'valor', 'vencimento', 'pago_em', 'criado_em'
+    ]
 
 
-class FolhaPagamentoProfessor(db.Model):
+class FolhaPagamentoProfessor(SafeModelMixin, db.Model):
     # Provisao mensal de salario de professores com possibilidade de ajuste.
     __tablename__ = 'folha_pagamento_professores'
     id = db.Column(db.Integer, primary_key=True)
@@ -171,9 +247,13 @@ class FolhaPagamentoProfessor(db.Model):
     atualizado_em = db.Column(db.DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
 
     professor = db.relationship('ProfessorCadastro', backref=db.backref('folhas_pagamento', lazy=True))
+    __public_fields__ = [
+        'id', 'professor_id', 'professor_nome', 'professor_cpf', 'referencia', 'valor_base',
+        'valor_ajustado', 'vencimento', 'status', 'observacao', 'criado_em', 'atualizado_em'
+    ]
 
 
-class Usuario(db.Model):
+class Usuario(SafeModelMixin, db.Model):
     # Conta usada no login e no fluxo de redefinicao de senha.
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
@@ -185,6 +265,7 @@ class Usuario(db.Model):
     reset_code_hash = db.Column(db.String(255), nullable=True)
     reset_code_expires_at = db.Column(db.DateTime, nullable=True)
     reset_code_used = db.Column(db.Boolean, default=True, nullable=False)
+    __public_fields__ = ['id', 'nome', 'cpf', 'email', 'whatsapp', 'role']
 
 
 # -------------------------
@@ -1043,10 +1124,14 @@ def build_dashboard_alerts():
             )
         )
 
-    students_without_class = [
-        aluno for aluno in AlunoCadastro.query.filter_by(status='ativo').all()
-        if not TurmaAluno.query.filter_by(aluno_id=aluno.id).first()
-    ]
+    active_alunos = AlunoCadastro.query.filter_by(status='ativo').all()
+    if active_alunos:
+        aluno_ids = [a.id for a in active_alunos]
+        enrolled_rows = TurmaAluno.query.with_entities(TurmaAluno.aluno_id).filter(TurmaAluno.aluno_id.in_(aluno_ids)).all()
+        enrolled_ids = set(r[0] for r in enrolled_rows)
+        students_without_class = [aluno for aluno in active_alunos if aluno.id not in enrolled_ids]
+    else:
+        students_without_class = []
     if students_without_class:
         alerts.append(
             create_dashboard_alert(
@@ -1082,10 +1167,15 @@ def build_dashboard_alerts():
             )
         )
 
-    pending_attendance = [
-        turma for turma in TurmaAgenda.query.order_by(TurmaAgenda.horario.asc()).all()
-        if turma.professor_status != 'presente' and turma.horario <= now.strftime('%H:%M')
-    ]
+    pending_attendance = (
+        TurmaAgenda.query
+        .filter(
+            TurmaAgenda.professor_status != 'presente',
+            TurmaAgenda.horario <= now.strftime('%H:%M'),
+        )
+        .order_by(TurmaAgenda.horario.asc())
+        .all()
+    )
     if pending_attendance:
         turma = pending_attendance[0]
         alerts.append(
@@ -1289,8 +1379,9 @@ def reallocate_student_between_classes(student_cpf, source_class_id, target_clas
     if not aluno:
         return {'error': 'Aluno nao encontrado.'}, 404
 
-    source_class = TurmaAgenda.query.get(source_class_id)
-    target_class = TurmaAgenda.query.get(target_class_id)
+    # Eager-load alunos for source/target classes to avoid N+1 when checking/enumerating
+    source_class = TurmaAgenda.query.options(selectinload(TurmaAgenda.alunos)).filter_by(id=source_class_id).first()
+    target_class = TurmaAgenda.query.options(selectinload(TurmaAgenda.alunos)).filter_by(id=target_class_id).first()
     if not source_class or not target_class:
         return {'error': 'Turma de origem ou destino nao encontrada.'}, 404
     if source_class.id == target_class.id:
@@ -1325,9 +1416,17 @@ def reallocate_student_between_classes(student_cpf, source_class_id, target_clas
         )
     )
     db.session.commit()
+
+    classes = (
+        TurmaAgenda.query.options(
+            selectinload(TurmaAgenda.alunos).selectinload(TurmaAluno.aluno)
+        )
+        .order_by(TurmaAgenda.horario.asc())
+        .all()
+    )
     return {
         'message': 'Aluno realocado com sucesso.',
-        'classes': [serialize_turma_agenda(turma) for turma in TurmaAgenda.query.order_by(TurmaAgenda.horario.asc()).all()],
+        'classes': [serialize_turma_agenda(turma) for turma in classes],
     }, 200
 
 
@@ -1513,41 +1612,39 @@ def ensure_default_users():
 
 
 # -------------------------
-# CORS PARA INTEGRACAO FRONT-END
+# CORS JA CONFIGURADO VIA FLASK-CORS
 # -------------------------
-@app.after_request
-def add_cors_headers(response):
-    request_origin = request.headers.get('Origin', '')
-    allowed_origin = ''
-
-    if request_origin in ALLOWED_ORIGINS:
-        allowed_origin = request_origin
-    elif request_origin.startswith('http://localhost:'):
-        allowed_origin = request_origin
-    elif request_origin.startswith('http://127.0.0.1:'):
-        allowed_origin = request_origin
-    elif ALLOWED_ORIGINS:
-        allowed_origin = ALLOWED_ORIGINS[0]
-
-    if allowed_origin:
-        response.headers['Access-Control-Allow-Origin'] = allowed_origin
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-    response.headers['Vary'] = 'Origin'
-    return response
+# Flask-CORS manipula automaticamente headers CORS e requests preflight OPTIONS.
+# Nao e necessario manipular manualmente via @app.after_request.
 
 
 # --- ROTAS DE PAGINAS (FRONT-END) ---
+def api_response(data=None, success=True, status=200):
+    body = {'success': bool(success), 'data': data}
+    return jsonify(body), status
+
+
 @app.route('/')
 def index():
-    # Rota de entrada visual: renderiza o dashboard HTML.
-    return render_template('dashboard.html')
+    # Antes: renderizava dashboard.html. Agora devolve JSON padronizado.
+    payload = {
+        'message': 'Back-end REST API. Use o front-end Next.js para a interface.',
+        'endpoints': ['/api/*'],
+    }
+    return api_response(payload, success=True, status=200)
 
 
 @app.route('/lista-alunos')
 def view_alunos():
-    # Rota da tabela de alunos com acoes de consulta/remocao.
-    return render_template('alunos.html')
+    # Endpoint legado que anteriormente servia a página HTML.
+    # Agora devolve a lista de alunos em JSON para compatibilidade.
+    alunos_db = AlunoCadastro.query.order_by(AlunoCadastro.id.desc()).all()
+    if alunos_db:
+        data = [serialize_aluno_cadastro(aluno) for aluno in alunos_db]
+    else:
+        alunos_list = Aluno.query.all()
+        data = [{'id': aluno.id, 'nome': aluno.nome} for aluno in alunos_list]
+    return api_response(data, success=True, status=200)
 
 
 # --- ROTAS DE API (BACK-END) ---
@@ -1581,26 +1678,38 @@ def dashboard_alerts():
 @app.route('/api/agenda/classes', methods=['GET'])
 def agenda_classes():
     ensure_default_agenda_classes()
-    classes = TurmaAgenda.query.order_by(TurmaAgenda.horario.asc()).all()
-    return jsonify([serialize_turma_agenda(turma) for turma in classes])
+    q = (request.args.get('q') or '').strip()
+    try:
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('limit', 20))
+    except Exception:
+        page = 1
+        per_page = 20
+
+    query = TurmaAgenda.query.options(selectinload(TurmaAgenda.alunos).selectinload(TurmaAluno.aluno))
+    if q:
+        pattern = f"%{q}%"
+        query = query.filter((TurmaAgenda.evento.ilike(pattern)) | (TurmaAgenda.professor.ilike(pattern)))
+
+    pagination = query.order_by(TurmaAgenda.horario.asc()).paginate(page=page, per_page=per_page, error_out=False)
+    items = [serialize_turma_agenda(turma) for turma in pagination.items]
+    meta = {'total': pagination.total, 'pages': pagination.pages, 'page': pagination.page, 'per_page': pagination.per_page}
+    return jsonify({'success': True, 'data': items, 'meta': meta})
 
 
-@app.route('/api/agenda/classes', methods=['POST', 'OPTIONS'])
+@app.route('/api/agenda/classes', methods=['POST'])
+@validate_request(TurmaCreate, methods=('POST',))
 def agenda_create_class():
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     ensure_default_agenda_classes()
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    from flask import g
+    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or request.form.to_dict() or {}
     response_body, status_code = persist_turma_agenda(payload)
     return jsonify(response_body), status_code
 
 
-@app.route('/api/agenda/classes/<class_id>', methods=['PUT', 'DELETE', 'OPTIONS'])
+@app.route('/api/agenda/classes/<class_id>', methods=['PUT', 'DELETE'])
+@validate_request(TurmaUpdate, methods=('PUT',), partial=True)
 def agenda_manage_class(class_id):
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     ensure_default_agenda_classes()
     turma = TurmaAgenda.query.get(class_id)
     if not turma:
@@ -1611,16 +1720,14 @@ def agenda_manage_class(class_id):
         db.session.commit()
         return jsonify({'message': 'Turma cancelada com sucesso.', 'id': class_id})
 
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    from flask import g
+    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or request.form.to_dict() or {}
     response_body, status_code = persist_turma_agenda(payload, existing_class=turma)
     return jsonify(response_body), status_code
 
 
-@app.route('/api/agenda/reallocate-student', methods=['POST', 'OPTIONS'])
+@app.route('/api/agenda/reallocate-student', methods=['POST'])
 def agenda_reallocate_student():
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     ensure_default_agenda_classes()
     payload = request.get_json(silent=True) or request.form.to_dict() or {}
     student_cpf = normalize_cpf(payload.get('studentCpf') or payload.get('student_cpf'))
@@ -1636,27 +1743,42 @@ def agenda_reallocate_student():
     return jsonify(response_body), status_code
 
 
-@app.route('/api/planos', methods=['GET', 'POST', 'OPTIONS'])
+@app.route('/api/planos', methods=['GET', 'POST'])
+@validate_request(PlanoCreate, methods=('POST',))
 def academy_plans():
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     ensure_default_academy_plans()
 
     if request.method == 'GET':
-        planos = PlanoAcademia.query.order_by(PlanoAcademia.id.asc()).all()
-        return jsonify([serialize_plano_academia(plano) for plano in planos])
+        q = (request.args.get('q') or '').strip()
+        ativo = request.args.get('ativo')
+        try:
+            page = int(request.args.get('page', 1))
+            per_page = int(request.args.get('limit', 20))
+        except Exception:
+            page = 1
+            per_page = 20
 
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+        query = PlanoAcademia.query
+        if q:
+            query = query.filter(PlanoAcademia.nome.ilike(f"%{q}%"))
+        if ativo is not None:
+            is_active = str(ativo).lower() in ('1', 'true', 'yes')
+            query = query.filter_by(ativo=is_active)
+
+        pagination = query.order_by(PlanoAcademia.id.asc()).paginate(page=page, per_page=per_page, error_out=False)
+        items = [serialize_plano_academia(plano) for plano in pagination.items]
+        meta = {'total': pagination.total, 'pages': pagination.pages, 'page': pagination.page, 'per_page': pagination.per_page}
+        return jsonify({'success': True, 'data': items, 'meta': meta})
+
+    from flask import g
+    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or request.form.to_dict() or {}
     response_body, status_code = persist_plano_academia(payload)
     return jsonify(response_body), status_code
 
 
-@app.route('/api/planos/<int:plan_id>', methods=['PUT', 'DELETE', 'OPTIONS'])
+@app.route('/api/planos/<int:plan_id>', methods=['PUT', 'DELETE'])
+@validate_request(PlanoUpdate, methods=('PUT',), partial=True)
 def academy_plan_detail(plan_id):
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     plan = PlanoAcademia.query.get(plan_id)
     if not plan:
         return jsonify({'error': 'Plano nao encontrado.'}), 404
@@ -1674,16 +1796,14 @@ def academy_plan_detail(plan_id):
         db.session.commit()
         return jsonify({'message': 'Plano removido com sucesso.'})
 
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    from flask import g
+    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or request.form.to_dict() or {}
     response_body, status_code = persist_plano_academia(payload, existing_plan=plan)
     return jsonify(response_body), status_code
 
 
-@app.route('/api/planos/<int:plan_id>/status', methods=['PATCH', 'OPTIONS'])
+@app.route('/api/planos/<int:plan_id>/status', methods=['PATCH'])
 def academy_plan_status(plan_id):
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     plan = PlanoAcademia.query.get(plan_id)
     if not plan:
         return jsonify({'error': 'Plano nao encontrado.'}), 404
@@ -1696,11 +1816,8 @@ def academy_plan_status(plan_id):
     return jsonify(serialize_plano_academia(plan))
 
 
-@app.route('/api/planos/<int:plan_id>/realocar-alunos', methods=['POST', 'OPTIONS'])
+@app.route('/api/planos/<int:plan_id>/realocar-alunos', methods=['POST'])
 def academy_plan_reallocate_students(plan_id):
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     source_plan = PlanoAcademia.query.get(plan_id)
     if not source_plan:
         return jsonify({'error': 'Plano de origem nao encontrado.'}), 404
@@ -1733,9 +1850,7 @@ def academy_plan_reallocate_students(plan_id):
     )
 
 
-@app.route('/api/finance/recebimentos', methods=['GET'])
-def finance_receipts():
-    ensure_default_receipts()
+def build_receipts_payload():
     recebimentos = RecebimentoAluno.query.order_by(RecebimentoAluno.vencimento.desc(), RecebimentoAluno.criado_em.desc()).all()
     recent_receipts = recebimentos[:8]
 
@@ -1760,25 +1875,26 @@ def finance_receipts():
         'atrasado': sum(1 for recebimento in recebimentos if recebimento.status == 'atrasado'),
     }
 
-    return jsonify(
-        {
-            'recent_receipts': [serialize_recebimento_aluno(recebimento) for recebimento in recent_receipts],
-            'summary': {
-                'previsto': previsto,
-                'previstoLabel': format_currency_brl(previsto),
-                'realizado': realizado,
-                'realizadoLabel': format_currency_brl(realizado),
-                'statusTotals': status_totals,
-            },
-        }
-    )
+    return {
+        'recent_receipts': [serialize_recebimento_aluno(recebimento) for recebimento in recent_receipts],
+        'summary': {
+            'previsto': previsto,
+            'previstoLabel': format_currency_brl(previsto),
+            'realizado': realizado,
+            'realizadoLabel': format_currency_brl(realizado),
+            'statusTotals': status_totals,
+        },
+    }
 
 
-@app.route('/api/payments/webhook', methods=['POST', 'OPTIONS'])
+@app.route('/api/finance/recebimentos', methods=['GET'])
+def finance_receipts():
+    ensure_default_receipts()
+    return jsonify(build_receipts_payload())
+
+
+@app.route('/api/payments/webhook', methods=['POST'])
 def payments_webhook():
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     payload = request.get_json(silent=True) or {}
     response_body, status_code = upsert_recebimento_aluno(payload)
     return jsonify(response_body), status_code
@@ -1810,11 +1926,8 @@ def finance_payroll():
     )
 
 
-@app.route('/api/finance/payroll/<int:payroll_id>', methods=['PUT', 'OPTIONS'])
+@app.route('/api/finance/payroll/<int:payroll_id>', methods=['PUT'])
 def adjust_finance_payroll(payroll_id):
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     payroll = FolhaPagamentoProfessor.query.get(payroll_id)
     if not payroll:
         return jsonify({'error': 'Lancamento de folha nao encontrado.'}), 404
@@ -1824,64 +1937,99 @@ def adjust_finance_payroll(payroll_id):
     return jsonify(response_body), status_code
 
 
-@app.route('/api/cadastros/alunos', methods=['GET', 'POST', 'OPTIONS'])
+@app.route('/api/cadastros/alunos', methods=['GET', 'POST'])
+@validate_request(AlunoCreate, methods=('POST',))
 def cadastros_alunos():
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     if request.method == 'GET':
-        alunos_db = AlunoCadastro.query.order_by(AlunoCadastro.id.desc()).all()
-        return jsonify([serialize_aluno_cadastro(aluno) for aluno in alunos_db])
+        q = (request.args.get('q') or '').strip()
+        status = request.args.get('status')
+        plano = request.args.get('plano')
+        try:
+            page = int(request.args.get('page', 1))
+            per_page = int(request.args.get('limit', 20))
+        except Exception:
+            page = 1
+            per_page = 20
 
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+        query = AlunoCadastro.query
+        if q:
+            pattern = f"%{q}%"
+            query = query.filter(or_(AlunoCadastro.nome.ilike(pattern), AlunoCadastro.cpf.ilike(pattern)))
+        if status:
+            query = query.filter_by(status=status)
+        if plano:
+            query = query.filter(AlunoCadastro.plano.ilike(f"%{plano}%"))
+
+        pagination = query.order_by(AlunoCadastro.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        items = [serialize_aluno_cadastro(aluno) for aluno in pagination.items]
+        meta = {'total': pagination.total, 'pages': pagination.pages, 'page': pagination.page, 'per_page': pagination.per_page}
+        return jsonify({'success': True, 'data': items, 'meta': meta})
+
+    from flask import g
+    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or request.form.to_dict() or {}
     response_body, status_code = persist_aluno_cadastro(payload)
     return jsonify(response_body), status_code
 
 
-@app.route('/api/cadastros/professores', methods=['GET', 'POST', 'OPTIONS'])
+@app.route('/api/cadastros/professores', methods=['GET', 'POST'])
+@validate_request(ProfessorCreate, methods=('POST',))
 def cadastros_professores():
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     if request.method == 'GET':
-        professores_db = ProfessorCadastro.query.order_by(ProfessorCadastro.id.desc()).all()
-        return jsonify([serialize_professor_cadastro(professor) for professor in professores_db])
+        q = (request.args.get('q') or '').strip()
+        status = request.args.get('status')
+        try:
+            page = int(request.args.get('page', 1))
+            per_page = int(request.args.get('limit', 20))
+        except Exception:
+            page = 1
+            per_page = 20
 
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+        query = ProfessorCadastro.query
+        if q:
+            pattern = f"%{q}%"
+            query = query.filter(or_(ProfessorCadastro.nome.ilike(pattern), ProfessorCadastro.especialidade.ilike(pattern)))
+        if status:
+            query = query.filter_by(status=status)
+
+        pagination = query.order_by(ProfessorCadastro.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        items = [serialize_professor_cadastro(professor) for professor in pagination.items]
+        meta = {'total': pagination.total, 'pages': pagination.pages, 'page': pagination.page, 'per_page': pagination.per_page}
+        return jsonify({'success': True, 'data': items, 'meta': meta})
+
+    from flask import g
+    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or request.form.to_dict() or {}
     response_body, status_code = persist_professor_cadastro(payload)
     return jsonify(response_body), status_code
 
 
-@app.route('/api/cadastros/professores/<cpf>', methods=['PUT', 'OPTIONS'])
+@app.route('/api/cadastros/professores/<cpf>', methods=['PUT'])
+@validate_request(ProfessorUpdate, methods=('PUT',), partial=True)
 def atualizar_professor(cpf):
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     normalized_cpf = normalize_cpf(cpf)
     professor = ProfessorCadastro.query.filter_by(cpf=normalized_cpf).first()
     if not professor:
         return jsonify({'error': 'Professor nao encontrado.'}), 404
 
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    from flask import g
+    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or request.form.to_dict() or {}
     payload['cpf'] = normalized_cpf
     response_body, status_code = persist_professor_cadastro(payload, existing_professor=professor)
     return jsonify(response_body), status_code
 
 
+
 # ========== ROTAS ADICIONAIS - INTEGRAÇÃO COM DASHBOARD REFATORADO ==========
 
-@app.route('/api/cadastros/alunos/<cpf>', methods=['PUT', 'OPTIONS'])
+@app.route('/api/cadastros/alunos/<cpf>', methods=['PUT'])
+@validate_request(AlunoUpdate, methods=('PUT',), partial=True)
 def atualizar_aluno(cpf):
     """Atualiza os dados de um aluno existente."""
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     normalized_cpf = normalize_cpf(cpf)
     aluno = AlunoCadastro.query.filter_by(cpf=normalized_cpf).first()
     if not aluno:
         return jsonify({'error': 'Aluno nao encontrado.'}), 404
-
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    from flask import g
+    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or request.form.to_dict() or {}
 
     try:
         if 'nome' in payload:
@@ -1908,17 +2056,19 @@ def atualizar_aluno(cpf):
         return jsonify({'error': f'Falha ao atualizar aluno: {str(error)}'}), 400
 
 
-@app.route('/api/finance/entries', methods=['POST', 'OPTIONS'])
+@app.route('/api/finance/entries', methods=['POST'])
+@validate_request(EntryCreate, methods=('POST',))
 def criar_entrada_financeira():
     """Cria uma entrada de receita ou despesa no financeiro."""
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    from flask import g
+    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or request.form.to_dict() or {}
 
     description = payload.get('description', '').strip()
     category = payload.get('category', '').strip()
-    amount = float(payload.get('amount', 0))
+    try:
+        amount = float(payload.get('amount', 0))
+    except Exception:
+        amount = 0
     entry_type = payload.get('type', 'receita')
     date_str = payload.get('date', datetime.now().isoformat().split('T')[0])
 
@@ -1943,12 +2093,9 @@ def criar_entrada_financeira():
         return jsonify({'error': f'Falha ao criar entrada: {str(error)}'}), 400
 
 
-@app.route('/api/cadastros/professores/<cpf>/vacation', methods=['POST', 'OPTIONS'])
+@app.route('/api/cadastros/professores/<cpf>/vacation', methods=['POST'])
 def processar_ferias_professor(cpf):
     """Processa solicitação de férias (aprova, reprova ou concede)."""
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     normalized_cpf = normalize_cpf(cpf)
     professor = ProfessorCadastro.query.filter_by(cpf=normalized_cpf).first()
     if not professor:
@@ -1987,19 +2134,32 @@ def processar_ferias_professor(cpf):
         return jsonify({'error': f'Falha ao processar ferias: {str(error)}'}), 400
 
 
-@app.route('/api/finance/payments', methods=['POST', 'OPTIONS'])
+@app.route('/api/finance/payments', methods=['POST'])
+@validate_request(PaymentCreate, methods=('POST',))
 def registrar_pagamento():
-    """Registra um pagamento de mensalidade de aluno."""
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
-    payload = request.get_json(silent=True) or {}
+    """Registra pagamento manual e devolve o snapshot atualizado do financeiro."""
+    from flask import g
+    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or {}
 
     student_cpf = normalize_cpf(payload.get('studentCpf', ''))
-    student_name = payload.get('studentName', '').strip()
-    amount = float(payload.get('amount', 0)) if payload.get('amount') else 0
+    student_name = re.sub(r'\s+', ' ', str(payload.get('studentName', '')).strip())
+    default_reference = datetime.now().strftime('%Y-%m')
+    reference = re.sub(r'\s+', ' ', str(payload.get('reference', default_reference)).strip()) or default_reference
+    description = re.sub(r'\s+', ' ', str(payload.get('description', f'Mensalidade {reference}')).strip()) or f'Mensalidade {reference}'
+    payment_method = str(payload.get('paymentMethod', 'manual')).strip().lower() or 'manual'
     payment_date = payload.get('paymentDate', datetime.now().isoformat().split('T')[0])
-    reference = payload.get('reference', datetime.now().isoformat().split('T')[0][:7])
+    if payment_method not in {'manual', 'dinheiro', 'pix', 'cartao-debito', 'cartao-credito'}:
+        payment_method = 'manual'
+
+    try:
+        amount = parse_currency_to_float(payload.get('amount', 0))
+    except (TypeError, ValueError):
+        amount = 0
+
+    try:
+        due_date = parse_date(payment_date)
+    except ValueError:
+        return jsonify({'error': 'Data de pagamento invalida.'}), 400
 
     if not student_cpf or not student_name or amount <= 0:
         return jsonify({'error': 'Informe CPF, nome e valor do pagamento.'}), 400
@@ -2014,26 +2174,28 @@ def registrar_pagamento():
             aluno_nome=aluno.nome,
             aluno_cpf=aluno.cpf,
             referencia=reference,
-            descricao=f'Mensalidade {reference}',
-            provider='manual',
+            descricao=description,
+            provider=payment_method,
             status='pago',
             valor=amount,
-            vencimento=datetime.strptime(payment_date, '%Y-%m-%d').date(),
+            vencimento=due_date,
             pago_em=datetime.now(),
         )
 
         db.session.add(recebimento)
 
-        aluno.pagamento = 'em-dia'
-        aluno.ultimo_pagamento = payment_date
+        update_aluno_payment_snapshot(aluno, 'pago', due_date, recebimento.pago_em)
         aluno.status = 'ativo'
 
         db.session.commit()
 
+        receipts_payload = build_receipts_payload()
         return jsonify({
             'id': recebimento.id,
             'message': 'Pagamento registrado com sucesso.',
             'student': serialize_aluno_cadastro(aluno),
+            'receipt': serialize_recebimento_aluno(recebimento),
+            'summary': receipts_payload['summary'],
         }), 201
     except Exception as error:
         db.session.rollback()
@@ -2044,12 +2206,28 @@ def registrar_pagamento():
 def alunos():
     # GET devolve todos os alunos em JSON para consumo por JS/SPA.
     if request.method == 'GET':
-        alunos_db = AlunoCadastro.query.order_by(AlunoCadastro.id.desc()).all()
-        if alunos_db:
-            return jsonify([{'id': aluno.id, 'nome': aluno.nome} for aluno in alunos_db])
+        q = (request.args.get('q') or '').strip()
+        try:
+            page = int(request.args.get('page', 1))
+            per_page = int(request.args.get('limit', 20))
+        except Exception:
+            page = 1
+            per_page = 20
 
-        alunos_list = Aluno.query.all()
-        return jsonify([{'id': aluno.id, 'nome': aluno.nome} for aluno in alunos_list])
+        query = AlunoCadastro.query
+        if q:
+            query = query.filter(AlunoCadastro.nome.ilike(f"%{q}%"))
+
+        pagination = query.order_by(AlunoCadastro.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        if pagination.items:
+            items = [{'id': aluno.id, 'nome': aluno.nome} for aluno in pagination.items]
+            meta = {'total': pagination.total, 'pages': pagination.pages, 'page': pagination.page, 'per_page': pagination.per_page}
+            return jsonify({'success': True, 'data': items, 'meta': meta})
+
+        fallback = Aluno.query.order_by(Aluno.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        items = [{'id': aluno.id, 'nome': aluno.nome} for aluno in fallback.items]
+        meta = {'total': fallback.total, 'pages': fallback.pages, 'page': fallback.page, 'per_page': fallback.per_page}
+        return jsonify({'success': True, 'data': items, 'meta': meta})
 
     payload = request.get_json(silent=True) or request.form.to_dict() or {}
     response_body, status_code = persist_aluno_cadastro(payload)
@@ -2063,11 +2241,8 @@ def adicionar_aluno_legacy():
     return jsonify(response_body), status_code
 
 
-@app.route('/api/auth/forgot-password', methods=['POST', 'OPTIONS'])
+@app.route('/api/auth/forgot-password', methods=['POST'])
 def forgot_password():
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     payload = request.get_json(silent=True) or {}
     cpf = normalize_cpf(payload.get('cpf'))
     role = (payload.get('role') or '').strip().lower()
@@ -2110,11 +2285,8 @@ def forgot_password():
     ), 502
 
 
-@app.route('/api/auth/login', methods=['POST', 'OPTIONS'])
+@app.route('/api/auth/login', methods=['POST'])
 def auth_login():
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     payload = request.get_json(silent=True) or {}
     cpf = normalize_cpf(payload.get('cpf'))
     password = str(payload.get('password') or '')
@@ -2144,11 +2316,8 @@ def auth_login():
     )
 
 
-@app.route('/api/auth/reset-password', methods=['POST', 'OPTIONS'])
+@app.route('/api/auth/reset-password', methods=['POST'])
 def reset_password():
-    if request.method == 'OPTIONS':
-        return ('', 204)
-
     payload = request.get_json(silent=True) or {}
     cpf = normalize_cpf(payload.get('cpf'))
     code = str(payload.get('code') or '').strip()
@@ -2190,14 +2359,123 @@ def reset_password():
     return jsonify({'message': 'Senha atualizada com sucesso.'})
 
 
-if __name__ == '__main__':
-    # Garante criacao das tabelas no banco antes de iniciar o servidor.
+# ----- HANDLERS GLOBAIS DE ERRO (respostas padronizadas) -----
+@app.errorhandler(404)
+def handle_404(error):
+    payload = {'message': 'Endpoint nao encontrado.'}
+    return api_response(payload, success=False, status=404)
+
+
+@app.errorhandler(Exception)
+def handle_exception(error):
+    # Loga excecao para observabilidade.
+    app.logger.exception(error)
+
+    # Se for um HTTPException (400, 401, 403, 404, etc.), preserve o código e descricao.
+    if isinstance(error, HTTPException):
+        description = getattr(error, 'description', None) or str(error)
+        return api_response({'message': description}, success=False, status=error.code)
+
+    # Para excecoes nao esperadas, nao vaze detalhes em producao.
+    show_details = app.debug or os.getenv('FLASK_DEBUG') == '1' or os.getenv('ENV', '').lower() == 'development'
+    if show_details:
+        payload = {'message': 'Erro interno no servidor.', 'details': str(error)}
+    else:
+        payload = {'message': 'Erro interno no servidor.'}
+
+    return api_response(payload, success=False, status=500)
+
+
+# Handler para erros de validacao do pydantic (quando instalado)
+if PydanticValidationError:
+    @app.errorhandler(PydanticValidationError)
+    def handle_pydantic_validation(error):
+        try:
+            details = error.errors()
+        except Exception:
+            details = str(error)
+        return api_response({'message': 'Payload invalido.', 'errors': details}, success=False, status=400)
+
+
+# Handler para erros de validacao do pydantic (quando instalado)
+if PydanticValidationError:
+    @app.errorhandler(PydanticValidationError)
+    def handle_pydantic_validation(error):
+        try:
+            details = error.errors()
+        except Exception:
+            details = str(error)
+        return api_response({'message': 'Payload invalido.', 'errors': details}, success=False, status=400)
+
+
+@app.after_request
+def wrap_json_response(response):
+    # Padroniza respostas JSON para o formato { success: bool, data|error: ... }
+    content_type = response.headers.get('Content-Type', '')
+    if 'application/json' in content_type:
+        try:
+            import json
+
+            raw = response.get_data(as_text=True) or ''
+            data = json.loads(raw) if raw else None
+        except Exception:
+            return response
+
+        # Se já estiver no formato padronizado, não altera
+        if isinstance(data, dict) and 'success' in data:
+            return response
+
+        status = response.status_code or 200
+        try:
+            if 200 <= status < 300:
+                wrapped = {'success': True, 'data': data}
+            else:
+                wrapped = {'success': False, 'error': data}
+
+            response.set_data(json.dumps(wrapped))
+            response.headers['Content-Length'] = str(len(response.get_data()))
+            response.headers['Content-Type'] = 'application/json'
+        except Exception:
+            # Caso de erro na serializacao, retorna resposta original
+            return response
+
+    return response
+
+
+# -------------------------
+# INICIALIZACAO DO APP
+# -------------------------
+def initialize_app():
+    """Inicializa o app com dados padrao e tabelas do banco de dados."""
     with app.app_context():
+        # Criar tabelas se nao existirem
         db.create_all()
-        ensure_default_academy_plans()
-        ensure_default_agenda_classes()
-        cleanup_demo_data()
+        print("✅ Tabelas do banco de dados criadas/verificadas")
+        
+        # Garantir usuario padrao de desenvolvimento
         ensure_default_users()
+        print("✅ Usuario padrao de desenvolvimento garantido")
+        
+        # Garantir dados iniciais (ordem importa)
+        ensure_default_academy_plans()
+        print("✅ Planos de academia carregados")
+        
+        ensure_default_agenda_classes()
+        print("✅ Agenda de aulas carregada")
+        
         ensure_default_receipts()
-    # debug=True facilita desenvolvimento local.
+        print("✅ Recebimentos padrao carregados")
+        
+        ensure_monthly_payroll()
+        print("✅ Folha de pagamento mensal provisionada")
+        
+        print("\n🚀 Aplicacao iniciada com sucesso!")
+        print("📍 Endpoints disponiveis em: http://localhost:5000/api/*")
+        print("🌐 CORS configurado para: http://localhost:3000 e http://127.0.0.1:3000")
+
+
+if __name__ == '__main__':
+    # Inicializa app antes de executar
+    initialize_app()
+    # debug=True facilita desenvolvimento local
     app.run(debug=True)

@@ -8,6 +8,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, Space_Grotesk } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
+import QueryProvider from '@/components/query-provider'
 
 // Fontes globais expostas via CSS variables para uso em toda a aplicacao.
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -49,7 +50,9 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className={`${inter.variable} ${spaceGrotesk.variable} font-sans antialiased`}>
-        {children}
+        <QueryProvider>
+          {children}
+        </QueryProvider>
         <Analytics />
       </body>
     </html>

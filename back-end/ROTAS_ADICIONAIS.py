@@ -5,6 +5,8 @@
 # Adicione estas rotas ao seu app.py ANTES da linha: if __name__ == '__main__'
 # 
 # ============================================================================
+from flask import request, jsonify
+from datetime import datetime
 
 # ============================================================================
 # 1. ROTA: Editar Aluno (PUT /api/cadastros/alunos/{cpf})

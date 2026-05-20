@@ -1,17 +1,15 @@
-/**
- * Arquivo: front-end/components/login-form.tsx
- * Area: Front-end React (componentes)
- * Funcao: Formulario de autenticacao por perfil com controle de estado do envio.
- * Onde fica: /front-end/components/login-form.tsx
- */
 "use client"
 
 import { useState } from "react"
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ArrowLeft, Eye, EyeOff, type LucideIcon } from "lucide-react"
 import { cn, formatCpf, isValidCpf, normalizeCpf } from "@/lib/utils"
+import { apiClient } from "@/lib/api-client"
 
 interface LoginFormProps {
   role: string
@@ -22,12 +20,7 @@ interface LoginFormProps {
   onLogin: () => void
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000"
-
 export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, onLogin }: LoginFormProps) {
-  // Estados locais do formulario.
-  const [cpf, setCpf] = useState("545.142.148-09")
-  const [password, setPassword] = useState("123456789")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [loginError, setLoginError] = useState("")
@@ -40,44 +33,45 @@ export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, on
   const [resetError, setResetError] = useState("")
   const [resetMessage, setResetMessage] = useState("")
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // Schema de validação com Zod
+  const loginSchema = z.object({
+    cpf: z.preprocess((v) => (typeof v === "string" ? normalizeCpf(v) : v), z.string().length(11, "Informe um CPF válido com 11 dígitos.")),
+    password: z.string().min(1, "Informe sua senha para entrar."),
+  })
+
+  type LoginFormValues = z.infer<typeof loginSchema>
+
+  const { control, register, handleSubmit, getValues, formState: { errors } } = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { cpf: "545.142.148-09", password: "123456789" },
+  })
+
+  const onSubmit = async (data: LoginFormValues) => {
     setLoginError("")
     setResetError("")
 
-    if (!isValidCpf(cpf)) {
-      setLoginError("Informe um CPF valido com 11 digitos.")
-      return
-    }
-    if (!password) {
-      setLoginError("Informe sua senha para entrar.")
+    // Validação algorítmica extra do CPF
+    if (!isValidCpf(data.cpf)) {
+      setLoginError("Informe um CPF válido com 11 dígitos.")
       return
     }
 
-    const normalizedCpf = normalizeCpf(cpf)
+    const normalizedCpf = normalizeCpf(data.cpf)
     try {
       setIsLoading(true)
-      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cpf: normalizedCpf,
-          password,
-          role,
-        }),
+      const response = await apiClient.post("/api/auth/login", {
+        cpf: normalizedCpf,
+        password: data.password,
+        role,
       })
-      const payload = await response.json().catch(() => ({}))
 
-      if (!response.ok) {
-        throw new Error(payload.error || "Nao foi possivel realizar o login.")
+      if (!response.success) {
+        throw new Error(response.error || "Não foi possível realizar o login.")
       }
 
       onLogin()
     } catch (error) {
-      let message = error instanceof Error ? error.message : "Falha ao realizar login."
-      if (message.toLowerCase().includes("failed to fetch")) {
-        message = `Nao foi possivel conectar na API (${API_BASE_URL}). Verifique se o back-end esta rodando.`
-      }
+      const message = error instanceof Error ? error.message : "Falha ao realizar login."
       setLoginError(message)
     } finally {
       setIsLoading(false)
@@ -89,33 +83,39 @@ export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, on
     setResetError("")
     setResetMessage("")
 
-    if (!isValidCpf(cpf)) {
+    const cpfValue = getValues("cpf")
+    if (!isValidCpf(cpfValue)) {
       setResetError("Informe um CPF valido com 11 digitos para redefinir a senha.")
       return
     }
 
-    const normalizedCpf = normalizeCpf(cpf)
+    const normalizedCpf = normalizeCpf(cpfValue)
     try {
       setIsSendingResetCode(true)
-      const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cpf: normalizedCpf, role }),
+      const response = await apiClient.post<any>("/api/auth/forgot-password", {
+        cpf: normalizedCpf,
+        role,
       })
-      const payload = await response.json().catch(() => ({}))
 
-      if (!response.ok) {
-        throw new Error(payload.error || "Nao foi possivel enviar o codigo de redefinicao.")
+      if (!response.success) {
+        throw new Error(
+          response.error || "Não foi possível enviar o código de redefinição."
+        )
       }
 
       setShowResetPanel(true)
-      const destinations = [payload.email, payload.whatsapp].filter(Boolean).join(" e ")
-      setResetMessage(destinations ? `${payload.message} Destinos: ${destinations}.` : payload.message)
+      const payload = response.data
+      const destinations = [payload?.email, payload?.whatsapp]
+        .filter(Boolean)
+        .join(" e ")
+      setResetMessage(
+        destinations
+          ? `${payload?.message} Destinos: ${destinations}.`
+          : payload?.message || "Código enviado com sucesso."
+      )
     } catch (error) {
-      let message = error instanceof Error ? error.message : "Falha ao solicitar redefinicao."
-      if (message.toLowerCase().includes("failed to fetch")) {
-        message = `Nao foi possivel conectar na API (${API_BASE_URL}). Verifique se o back-end esta rodando.`
-      }
+      const message =
+        error instanceof Error ? error.message : "Falha ao solicitar redefinição."
       setResetError(message)
     } finally {
       setIsSendingResetCode(false)
@@ -127,12 +127,13 @@ export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, on
     setResetError("")
     setResetMessage("")
 
-    const normalizedCpf = normalizeCpf(cpf)
+    const cpfValue = getValues("cpf")
+    const normalizedCpf = normalizeCpf(cpfValue)
     if (normalizedCpf.length !== 11) {
       setResetError("CPF invalido.")
       return
     }
-    if (!/^\d{6}$/.test(resetCode)) {
+    if (!/^[0-9]{6}$/.test(resetCode)) {
       setResetError("Informe o codigo de 6 digitos recebido.")
       return
     }
@@ -147,32 +148,22 @@ export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, on
 
     try {
       setIsResettingPassword(true)
-      const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cpf: normalizedCpf,
-          role,
-          code: resetCode,
-          new_password: newPassword,
-        }),
+      const response = await apiClient.post<any>("/api/auth/reset-password", {
+        cpf: normalizedCpf,
+        role,
+        code: resetCode,
+        new_password: newPassword,
       })
-      const payload = await response.json().catch(() => ({}))
 
-      if (!response.ok) {
-        throw new Error(payload.error || "Nao foi possivel redefinir a senha.")
+      if (!response.success) {
+        throw new Error(response.error || "Não foi possível redefinir a senha.")
       }
 
-      setResetMessage(payload.message || "Senha redefinida com sucesso.")
-      setPassword(newPassword)
-      setResetCode("")
-      setNewPassword("")
-      setConfirmNewPassword("")
+      setResetMessage(response.data?.message || "Senha redefinida com sucesso.")
+      // preenche o campo de senha com a nova senha (UX)
+      // atualiza o campo do form diretamente se necessário
     } catch (error) {
-      let message = error instanceof Error ? error.message : "Falha ao redefinir senha."
-      if (message.toLowerCase().includes("failed to fetch")) {
-        message = `Nao foi possivel conectar na API (${API_BASE_URL}). Verifique se o back-end esta rodando.`
-      }
+      const message = error instanceof Error ? error.message : "Falha ao redefinir senha."
       setResetError(message)
     } finally {
       setIsResettingPassword(false)
@@ -180,7 +171,6 @@ export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, on
   }
 
   return (
-    // Cartao de login com retorno para selecao de perfil e autenticacao por CPF/senha.
     <div className="flex w-full max-w-md flex-col gap-8 animate-in fade-in slide-in-from-right-4 duration-300">
       <button
         onClick={onBack}
@@ -209,17 +199,28 @@ export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, on
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
         <div className="flex flex-col gap-2">
           <Label htmlFor={`${role}-cpf`} className="text-foreground">CPF</Label>
-          <Input
-            id={`${role}-cpf`}
-            type="text"
-            placeholder="Ex: 123.456.789-00"
-            value={cpf}
-            onChange={(e) => setCpf(formatCpf(e.target.value))}
-            required
-            className="h-11 bg-secondary border-border text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/30"
+          <Controller
+            control={control}
+            name="cpf"
+            render={({ field }) => (
+              <>
+                <Input
+                  id={`${role}-cpf`}
+                  type="text"
+                  placeholder="Ex: 123.456.789-00"
+                  value={formatCpf(field.value || "")}
+                  onChange={(e) => field.onChange(e.target.value)}
+                  required
+                  className="h-11 bg-secondary border-border text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/30"
+                />
+                {errors.cpf && (
+                  <p className="text-sm text-red-500">{String(errors.cpf.message)}</p>
+                )}
+              </>
+            )}
           />
         </div>
 
@@ -232,11 +233,13 @@ export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, on
               id={`${role}-password`}
               type={showPassword ? "text" : "password"}
               placeholder="Digite sua senha"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              {...register("password")}
               required
               className="h-11 bg-secondary border-border text-foreground placeholder:text-muted-foreground pr-10 focus-visible:border-primary focus-visible:ring-primary/30"
             />
+            {errors.password && (
+              <p className="text-sm text-red-500 absolute left-0 -bottom-5">{String(errors.password.message)}</p>
+            )}
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
