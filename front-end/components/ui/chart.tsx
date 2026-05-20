@@ -13,6 +13,10 @@ import type {
   LegendProps as RechartsLegendProps,
   ResponsiveContainerProps as RechartsResponsiveContainerProps,
 } from 'recharts'
+import type {
+  NameType,
+  ValueType,
+} from 'recharts/types/component/DefaultTooltipContent'
 
 import { cn } from '@/lib/utils'
 
@@ -32,6 +36,8 @@ export type ChartConfig = {
 type ChartContextProps = {
   config: ChartConfig
 }
+
+type ChartTooltipProps = RechartsTooltipProps<ValueType, NameType>
 
 const ChartContext = React.createContext<ChartContextProps | null>(null)
 
@@ -76,7 +82,7 @@ function ChartContainer({
       >
         <ChartStyle id={chartId} config={config} />
         <RechartsResponsiveContainer>
-          {children}
+          {children as React.ReactElement}
         </RechartsResponsiveContainer>
       </div>
     </ChartContext.Provider>
@@ -116,10 +122,16 @@ ${colorConfig
   )
 }
 
-const ChartTooltip = dynamic(() => import('./chart-recharts').then((m) => m.Tooltip), {
-  ssr: false,
-  loading: () => null,
-}) as unknown as React.ComponentType<RechartsTooltipProps>
+const ChartTooltip = dynamic<ChartTooltipProps>(
+  () =>
+    import('./chart-recharts').then(
+      (m) => m.Tooltip as unknown as React.ComponentType<ChartTooltipProps>,
+    ),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+)
 
 function ChartTooltipContent({
   active,
@@ -135,7 +147,7 @@ function ChartTooltipContent({
   color,
   nameKey,
   labelKey,
-}: RechartsTooltipProps & React.ComponentProps<'div'> & {
+}: ChartTooltipProps & React.ComponentProps<'div'> & {
     hideLabel?: boolean
     hideIndicator?: boolean
     indicator?: 'line' | 'dot' | 'dashed'
@@ -198,7 +210,7 @@ function ChartTooltipContent({
         {payload.map((item, index) => {
           const key = `${nameKey || item.name || item.dataKey || 'value'}`
           const itemConfig = getPayloadConfigFromPayload(config, item, key)
-          const indicatorColor = color || item.payload.fill || item.color
+          const indicatorColor = color || item.payload?.fill || item.color
 
           return (
             <div
@@ -264,10 +276,16 @@ function ChartTooltipContent({
   )
 }
 
-const ChartLegend = dynamic(() => import('./chart-recharts').then((m) => m.Legend), {
-  ssr: false,
-  loading: () => null,
-}) as unknown as React.ComponentType<RechartsLegendProps>
+const ChartLegend = dynamic<RechartsLegendProps>(
+  () =>
+    import('./chart-recharts').then(
+      (m) => m.Legend as unknown as React.ComponentType<RechartsLegendProps>,
+    ),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+)
 
 function ChartLegendContent({
   className,

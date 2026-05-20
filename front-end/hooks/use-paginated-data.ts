@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { apiClient } from "@/lib/api-client"
 
@@ -55,6 +55,22 @@ export function usePaginatedData<T>(endpoint: string, options: UsePaginatedDataO
   const total = data?.total || 0
   const hasMore = page * pageSize < total
 
+  const nextPage = useCallback(() => {
+    if (hasMore) setPage((p) => p + 1)
+  }, [hasMore])
+
+  const prevPage = useCallback(() => {
+    setPage((p) => Math.max(1, p - 1))
+  }, [])
+
+  const goToPage = useCallback((newPage: number) => {
+    if (newPage > 0) setPage(newPage)
+  }, [])
+
+  const refresh = useCallback(() => {
+    void refetch()
+  }, [refetch])
+
   return {
     items,
     loading: isLoading,
@@ -63,10 +79,10 @@ export function usePaginatedData<T>(endpoint: string, options: UsePaginatedDataO
     pageSize,
     total,
     hasMore,
-    nextPage: () => hasMore && setPage((p) => p + 1),
-    prevPage: () => page > 1 && setPage((p) => p - 1),
-    goToPage: (newPage: number) => newPage > 0 && setPage(newPage),
-    refresh: () => refetch(),
+    nextPage,
+    prevPage,
+    goToPage,
+    refresh,
     setError: setLocalError,
   }
 }

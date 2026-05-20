@@ -5,14 +5,9 @@
  * Onde fica: /front-end/app/layout.tsx
  */
 import type { Metadata, Viewport } from 'next'
-import { Inter, Space_Grotesk } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import QueryProvider from '@/components/query-provider'
-
-// Fontes globais expostas via CSS variables para uso em toda a aplicacao.
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
-const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-space-grotesk' })
 
 // Metadados base do projeto (titulo, descricao e icones).
 export const metadata: Metadata = {
@@ -49,7 +44,7 @@ export default function RootLayout({
   // Root layout: aplica idioma, classes globais e injeta analytics no final.
   return (
     <html lang="pt-BR">
-      <body className={`${inter.variable} ${spaceGrotesk.variable} font-sans antialiased`}>
+      <body className="font-sans antialiased">
         <QueryProvider>
           {children}
         </QueryProvider>
