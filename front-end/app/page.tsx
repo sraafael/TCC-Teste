@@ -17,9 +17,14 @@ import { Shield, GraduationCap, User, Dumbbell } from "lucide-react"
 type Role = "admin" | "professor" | "student" | null
 type View = "select" | "login" | "dashboard"
 
-// TODO: REFACTOR - A configuração dos perfis está acoplada ao fluxo de navegação e à UI, dificultando extensão para novos papéis ou regras.
-// Configura os metadados visuais/textuais de cada perfil selecionavel na home.
-const roles = {
+type RoleConfig = {
+  label: string
+  description: string
+  icon: typeof Shield
+  accentColor: string
+}
+
+const roles: Record<Exclude<Role, null>, RoleConfig> = {
   admin: {
     label: "Administração",
     description: "Gerencie alunos, professores, financeiro e relatorios.",
@@ -38,48 +43,45 @@ const roles = {
     icon: User,
     accentColor: "bg-[oklch(0.65_0.20_30)]/15",
   },
+}
+
+const roleOrder = Object.keys(roles) as Array<Exclude<Role, null>>
+
+const dashboardByRole = {
+  admin: DashboardAdmin,
+  professor: DashboardProfessor,
+  student: DashboardStudent,
 } as const
 
 export default function Home() {
-  // selectedRole guarda qual perfil foi escolhido no primeiro passo.
   const [selectedRole, setSelectedRole] = useState<Role>(null)
-  // view controla a etapa da interface: selecao, login e dashboard.
   const [view, setView] = useState<View>("select")
 
-  // Avanca da etapa de selecao para login ao escolher um perfil.
   const handleSelectRole = (role: Role) => {
     setSelectedRole(role)
     setView("login")
   }
 
-  // Retorna ao estado inicial (sem perfil selecionado).
   const handleBack = () => {
     setView("select")
     setSelectedRole(null)
   }
 
-  // TODO: REFACTOR - A transição de login para dashboard está simulada no estado local, misturando autenticação com controle de tela.
-  // Simula autenticacao bem-sucedida e abre o dashboard correspondente.
   const handleLogin = () => {
     setView("dashboard")
   }
 
-  // Logout limpa estado e volta para a tela inicial.
   const handleLogout = () => {
     setView("select")
     setSelectedRole(null)
   }
 
-  // TODO: REFACTOR - A decisão de renderizar dashboards por perfil está espalhada na página, aumentando o acoplamento entre fluxo e componentes.
-  // Renderizacao condicional do dashboard conforme o perfil autenticado.
   if (view === "dashboard" && selectedRole) {
-    if (selectedRole === "admin") return <DashboardAdmin onLogout={handleLogout} />
-    if (selectedRole === "professor") return <DashboardProfessor onLogout={handleLogout} />
-    if (selectedRole === "student") return <DashboardStudent onLogout={handleLogout} />
+    const DashboardComponent = dashboardByRole[selectedRole]
+    return <DashboardComponent onLogout={handleLogout} />
   }
 
   return (
-    // Fluxo visual principal da pagina inicial e login.
     <main className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-12">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-primary/5 blur-3xl" />
@@ -104,16 +106,20 @@ export default function Home() {
             </div>
 
             <div className="grid w-full max-w-3xl gap-5 sm:grid-cols-3">
-              {(Object.entries(roles) as [Role, typeof roles[keyof typeof roles]][]).map(([key, role]) => (
-                <RoleCard
-                  key={key}
-                  title={role.label}
-                  description={role.description}
-                  icon={role.icon}
-                  accentColor={role.accentColor}
-                  onClick={() => handleSelectRole(key)}
-                />
-              ))}
+              {roleOrder.map((roleKey) => {
+                const role = roles[roleKey]
+
+                return (
+                  <RoleCard
+                    key={roleKey}
+                    title={role.label}
+                    description={role.description}
+                    icon={role.icon}
+                    accentColor={role.accentColor}
+                    onClick={() => handleSelectRole(roleKey)}
+                  />
+                )
+              })}
             </div>
           </div>
         )}

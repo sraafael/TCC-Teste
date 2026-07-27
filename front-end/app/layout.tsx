@@ -4,52 +4,49 @@
  * Funcao: Layout raiz do Next.js com metadados, fontes globais e analytics.
  * Onde fica: /front-end/app/layout.tsx
  */
-import type { Metadata, Viewport } from 'next'
-import { Analytics } from '@vercel/analytics/next'
-import './globals.css'
-import QueryProvider from '@/components/query-provider'
+import type { Metadata, Viewport } from "next"
+import type { ReactNode } from "react"
+import { Analytics } from "@vercel/analytics/next"
+import "./globals.css"
+import QueryProvider from "@/components/query-provider"
 
-// TODO: REFACTOR - O layout centraliza metadados, tema e providers, misturando responsabilidades de aplicação e infraestrutura.
-// Metadados base do projeto (titulo, descricao e icones).
-export const metadata: Metadata = {
-  title: 'FitPro - Sistema de Academia',
-  description: 'Sistema completo de gerenciamento de academia para administradores, professores e alunos.',
+const appMetadata: Metadata = {
+  title: "FitPro - Sistema de Academia",
+  description: "Sistema completo de gerenciamento de academia para administradores, professores e alunos.",
   icons: {
     icon: [
       {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
+        url: "/icon-light-32x32.png",
+        media: "(prefers-color-scheme: light)",
       },
       {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
+        url: "/icon-dark-32x32.png",
+        media: "(prefers-color-scheme: dark)",
       },
       {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
+        url: "/icon.svg",
+        type: "image/svg+xml",
       },
     ],
-    apple: '/apple-icon.png',
+    apple: "/apple-icon.png",
   },
 }
 
+export const metadata = appMetadata
+
 export const viewport: Viewport = {
-  themeColor: '#1a1a2e',
+  themeColor: "#1a1a2e",
 }
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode
+  children: ReactNode
 }>) {
-  // TODO: REFACTOR - A composição do shell global depende de provider e analytics embutidos, deixando o layout rígido para novos contextos.
-  // Root layout: aplica idioma, classes globais e injeta analytics no final.
   return (
     <html lang="pt-BR">
       <body className="font-sans antialiased">
-        <QueryProvider>
-          {children}
-        </QueryProvider>
+        <QueryProvider>{children}</QueryProvider>
         <Analytics />
       </body>
     </html>
