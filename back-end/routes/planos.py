@@ -12,6 +12,7 @@ planos_bp = Blueprint('planos', __name__)
 @planos_bp.route('/api/planos', methods=['GET', 'POST'])
 @validate_request(PlanoCreate, methods=('POST',))
 def academy_plans():
+    // TODO: REFACTOR - A rota de planos mistura criação de dados padrão, filtragem, paginação e persistência em uma única função.
     utils.ensure_default_academy_plans()
 
     if request.method == 'GET':
@@ -45,6 +46,7 @@ def academy_plans():
 @planos_bp.route('/api/planos/<int:plan_id>', methods=['PUT', 'DELETE'])
 @validate_request(PlanoUpdate, methods=('PUT',), partial=True)
 def academy_plan_detail(plan_id):
+    // TODO: REFACTOR - A regra de impedir remoção com alunos ativos está embutida na rota, acoplando negócio à camada HTTP.
     plan = PlanoAcademia.query.get(plan_id)
     if not plan:
         return jsonify({'error': 'Plano nao encontrado.'}), 404
@@ -84,6 +86,7 @@ def academy_plan_status(plan_id):
 @planos_bp.route('/api/planos/<int:plan_id>/realocar-alunos', methods=['POST'])
 @validate_request(PlanReallocate, methods=('POST',))
 def academy_plan_reallocate_students(plan_id):
+    // TODO: REFACTOR - A realocação de alunos entre planos tem validações e transformações de domínio diretamente na rota.
     source_plan = PlanoAcademia.query.get(plan_id)
     if not source_plan:
         return jsonify({'error': 'Plano de origem nao encontrado.'}), 404

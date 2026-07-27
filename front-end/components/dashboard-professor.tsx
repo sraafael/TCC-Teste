@@ -105,7 +105,7 @@ interface ProfessorAgendaClass {
 }
 
 function calculateIMC(weight: number, height: number): number {
-  // Calcula IMC no formato padrao (kg/m^2) com arredondamento de 1 casa decimal.
+  // O IMC é usado como regra de classificação de risco para a tela, então qualquer ajuste na fórmula precisa ser tratado com cuidado.
   if (height <= 0) return 0
   const heightM = height / 100
   return Math.round((weight / (heightM * heightM)) * 10) / 10

@@ -4,6 +4,7 @@ import re
 
 
 class AlunoCreate(BaseModel):
+    # TODO: REFACTOR - O schema de criação de aluno valida campos de domínio e formato de telefone/CPF de forma muito próxima ao endpoint.
     nome: str = Field(..., min_length=3, max_length=100)
     cpf: str
     telefone: str
@@ -103,6 +104,7 @@ class ProfessorUpdate(BaseModel):
 
 
 class PlanoBase(BaseModel):
+    # TODO: REFACTOR - O schema de plano usa aliases diferentes de nomes de campo, o que aumenta o risco de inconsistência entre entrada e lógica interna.
     name: str = Field(..., min_length=3, max_length=100)
     price: float = Field(..., gt=0)
     duration: str = Field(..., min_length=1)
@@ -157,6 +159,7 @@ class PlanoUpdate(BaseModel):
 
 
 class TurmaCreate(BaseModel):
+    # TODO: REFACTOR - O schema de turma valida horário e capacidade, mas depende de convenções de nomes muito específicas do frontend legado.
     event: str = Field(..., min_length=3, max_length=100)
     time: str
     room: str = Field(..., min_length=1, max_length=50)
@@ -199,6 +202,7 @@ class TurmaUpdate(BaseModel):
 
 
 class PaymentCreate(BaseModel):
+    # TODO: REFACTOR - O schema de pagamento mistura dados do aluno, método e referência, tornando a entrada mais frágil.
     studentCpf: str
     studentName: str
     amount: float = Field(..., gt=0)
@@ -331,6 +335,7 @@ class ResetPasswordSchema(BaseModel):
 
 
 class ProfessorVacation(BaseModel):
+    # TODO: REFACTOR - O schema de férias define uma ação de negócio limitada a uma lista fixa, o que pode ficar rígido com o tempo.
     action: str
     startDate: str
     endDate: str

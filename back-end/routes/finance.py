@@ -20,6 +20,7 @@ def finance_receipts():
 
 @finance_bp.route('/api/payments/webhook', methods=['POST'])
 def payments_webhook():
+    // TODO: REFACTOR - O webhook recebe payloads heterogêneos e os encaminha diretamente, o que torna a entrada dependente de um contrato implícito.
     # Webhook payloads are provider-specific; do not enforce strict schema here
     payload = request.get_json(silent=True) or {}
     response_body, status_code = utils.upsert_recebimento_aluno(payload)
@@ -119,6 +120,7 @@ def criar_entrada_financeira():
 @finance_bp.route('/api/finance/payments', methods=['POST'])
 @validate_request(PaymentCreate, methods=('POST',))
 def registrar_pagamento():
+    // TODO: REFACTOR - O registro de pagamento concentra normalização, validação, criação de recebimento e atualização de aluno em uma única rotina.
     from flask import g
     payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or {}
 

@@ -7,6 +7,7 @@ from sqlalchemy import Column, Integer, String, ForeignKey, create_engine
 from sqlalchemy.orm import relationship, declarative_base, sessionmaker
 from contextlib import contextmanager
 
+# TODO: REFACTOR - O módulo mistura definição de modelos, engine e helpers de acesso, concentrando responsabilidades e dificultando evolução independente.
 # Base declarativa compartilhada por todos os modelos ORM deste arquivo.
 Base = declarative_base()
 
@@ -36,6 +37,7 @@ class Plano(Base):
     def to_dict(self):
         return { 'id': self.id, 'tipo': self.tipo, 'preco': self.preco }
 
+# TODO: REFACTOR - A configuração do banco está hardcoded em um arquivo de domínio, o que aumenta o acoplamento com o ambiente local.
 # Inicializacao do engine com pool_pre_ping para validar conexoes antes de usar.
 # Se necessario, substitua por outro provider (PostgreSQL/MySQL) mudando a URI.
 engine = create_engine('sqlite:///database.db', connect_args={'check_same_thread': False})

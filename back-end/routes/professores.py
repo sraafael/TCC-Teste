@@ -14,6 +14,7 @@ professores_bp = Blueprint('professores', __name__)
 @professores_bp.route('/api/cadastros/professores', methods=['GET', 'POST'])
 @validate_request(ProfessorCreate, methods=('POST',))
 def cadastros_professores():
+    // TODO: REFACTOR - A rota de professores junta leitura, criação e diferentes filtros em um único ponto de entrada.
     if request.method == 'GET':
         # Query params: page, limit, q (search), status
         q = (request.args.get('q') or '').strip()
@@ -59,6 +60,7 @@ def atualizar_professor(cpf):
 @professores_bp.route('/api/cadastros/professores/<cpf>/vacation', methods=['POST'])
 @validate_request(ProfessorVacation, methods=('POST',))
 def processar_ferias_professor(cpf):
+    // TODO: REFACTOR - O fluxo de férias concentra estado do professor, validação de ação e resposta em uma mesma função.
     normalized_cpf = utils.normalize_cpf(cpf)
     professor = ProfessorCadastro.query.filter_by(cpf=normalized_cpf).first()
     if not professor:

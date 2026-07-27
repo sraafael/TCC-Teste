@@ -11,6 +11,7 @@ interface StatsData {
 }
 
 export function StatsLoader() {
+  // TODO: REFACTOR - The component maps backend field names directly into UI labels, which creates a fragile contract with the API shape.
   const { data, isLoading, error } = useQueryApi<StatsData>(["stats"], "/api/stats")
 
   if (isLoading) return <LoadingOverlay message="Carregando estatísticas..." />

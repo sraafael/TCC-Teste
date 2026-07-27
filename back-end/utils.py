@@ -44,6 +44,7 @@ def normalize_cpf(raw_value):
 
 
 def get_user_for_login(cpf, role=None):
+    # TODO: REFACTOR - A lógica de autenticação faz fallback para usuário de teste e consulta por role em um mesmo ponto, escondendo regras de negócio importantes.
     query = Usuario.query.filter_by(cpf=cpf)
     if role:
         query = query.filter_by(role=role)
@@ -468,6 +469,7 @@ def serialize_aluno_cadastro(aluno):
 
 
 def persist_aluno_cadastro(payload):
+    # TODO: REFACTOR - A persistência de aluno mistura normalização, validação, criação e atualização com regras de negócio implícitas.
     required_fields = ['nome', 'cpf', 'telefone', 'email', 'idade', 'peso', 'plano']
     missing_fields = [field for field in required_fields if str(payload.get(field, '')).strip() == '']
     if missing_fields:
@@ -556,6 +558,7 @@ def serialize_professor_cadastro(professor):
 
 
 def persist_professor_cadastro(payload, existing_professor=None):
+    # TODO: REFACTOR - A persistência de professor concentra domínio, status e relacionamento com alunos em uma função ampla.
     required_fields = ['nome', 'cpf', 'telefone', 'email', 'horario', 'salario', 'especialidade']
     missing_fields = [field for field in required_fields if str(payload.get(field, '')).strip() == '']
     if missing_fields:
@@ -663,6 +666,7 @@ def update_aluno_payment_snapshot(aluno, status, due_date, paid_at=None):
 
 
 def upsert_recebimento_aluno(payload):
+    # TODO: REFACTOR - O upsert de recebimento assume um payload heterogêneo e faz várias transformações de negócio em sequência.
     cpf = normalize_cpf(payload.get('cpf') or payload.get('aluno_cpf'))
     if len(cpf) != 11:
         return {'error': 'CPF do aluno invalido.'}, 400
@@ -995,6 +999,7 @@ def generate_agenda_class_id():
 
 
 def persist_turma_agenda(payload, existing_class=None):
+    # TODO: REFACTOR - A persistência de turma mistura geração de ID, associação de alunos e atualização de estado em um único fluxo.
     event = re.sub(r'\s+', ' ', str(payload.get('event') or payload.get('evento') or '').strip())
     time = str(payload.get('time') or payload.get('horario') or '').strip()
     room = re.sub(r'\s+', ' ', str(payload.get('room') or payload.get('sala') or '').strip())
@@ -1042,6 +1047,7 @@ def seed_turma_aluno(turma, student_name, payment, present):
 
 
 def ensure_default_agenda_classes():
+    # TODO: REFACTOR - A função de seed de agenda é um ponto de acoplamento forte entre dados mockados e regras operacionais reais.
     if TurmaAgenda.query.count() > 0:
         return
 

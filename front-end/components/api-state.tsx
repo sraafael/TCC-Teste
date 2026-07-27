@@ -83,6 +83,7 @@ export function ApiState({
   loadingMessage = "Carregando...",
   skeletonCount = 3,
 }: ApiStateProps) {
+  // TODO: REFACTOR - These shared state helpers now decide both UI rendering and error policy, which makes every new state variant harder to evolve.
   if (loading) {
     return <LoadingOverlay message={loadingMessage} />
   }

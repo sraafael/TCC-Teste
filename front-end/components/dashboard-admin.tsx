@@ -772,7 +772,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     { label: "Planos da Academia", icon: Tag, sheet: "planos" as SheetType },
   ]
 
-  // Faz bootstrap do painel com cancelamento seguro quando o componente desmonta.
+  // TODO: REFACTOR - This screen bootstraps multiple domain modules in one effect, so data loading, fallback rules, and view state are tightly coupled.
   useEffect(() => {
     const controller = new AbortController()
 
@@ -997,6 +997,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
       ]
     : []
 
+  // TODO: REFACTOR - Alert composition mixes server-driven messages with local fallback rules, so the business policy is hidden inside the presentation layer.
   const alertsSource = dashboardAlertsRaw.length > 0 ? dashboardAlertsRaw : fallbackAlerts
   const alerts: DashboardAlert[] = alertsSource.map((alert) => ({
     id: alert.id,
@@ -1832,6 +1833,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   )
 
   const handleAddStudent = async () => {
+    // O cadastro de aluno combina validação, duplicidade e vínculo de plano; esse fluxo merece um serviço dedicado para manter a regra centralizada.
     const { errors, normalized } = validateAddStudentForm(addStudentForm)
     setAddStudentFieldErrors(errors)
     setAddStudentError("")

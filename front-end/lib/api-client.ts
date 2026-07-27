@@ -26,6 +26,7 @@ async function apiFetch<T = any>(
   endpoint: string,
   options: FetchOptions = {}
 ): Promise<ApiResponse<T>> {
+  // TODO: REFACTOR - A lógica de normalização de erro e fallback de rede está misturada à execução HTTP, dificultando o reuso em outros clientes.
   const url = `${API_BASE_URL}${endpoint}`
   const { skipErrorHandling = false, ...fetchOptions } = options
 
@@ -35,6 +36,7 @@ async function apiFetch<T = any>(
   }
 
   try {
+    // TODO: REFACTOR - O cliente assume um formato de resposta único e um contrato de erro do backend, deixando a regra de negócio presa à implementação.
     const response = await fetch(url, {
       ...fetchOptions,
       headers,

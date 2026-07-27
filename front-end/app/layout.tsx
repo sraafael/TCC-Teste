@@ -9,6 +9,7 @@ import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import QueryProvider from '@/components/query-provider'
 
+// TODO: REFACTOR - O layout centraliza metadados, tema e providers, misturando responsabilidades de aplicação e infraestrutura.
 // Metadados base do projeto (titulo, descricao e icones).
 export const metadata: Metadata = {
   title: 'FitPro - Sistema de Academia',
@@ -41,6 +42,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  // TODO: REFACTOR - A composição do shell global depende de provider e analytics embutidos, deixando o layout rígido para novos contextos.
   // Root layout: aplica idioma, classes globais e injeta analytics no final.
   return (
     <html lang="pt-BR">

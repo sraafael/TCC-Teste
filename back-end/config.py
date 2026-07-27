@@ -6,6 +6,7 @@
 import os
 
 class Config:
+    # TODO: REFACTOR - As configurações de ambiente e segurança estão concentradas em um objeto simples, dificultando distinção entre ambientes e defaults por contexto.
     # Endereco do banco principal da aplicacao Flask.
     SQLALCHEMY_DATABASE_URI = 'sqlite:///site.db'
     # Chave de sessao: usa variavel de ambiente quando disponivel e fallback local em dev.

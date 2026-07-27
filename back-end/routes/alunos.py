@@ -13,6 +13,7 @@ alunos_bp = Blueprint('alunos', __name__)
 @alunos_bp.route('/api/cadastros/alunos', methods=['GET', 'POST'])
 @validate_request(AlunoCreate, methods=('POST',))
 def cadastros_alunos():
+    // TODO: REFACTOR - A rota trata consulta, criação e formatos alternativos de payload em um mesmo endpoint, tornando a regra de negócio difícil de evoluir.
     if request.method == 'GET':
         # Query params: page, limit, q (search), status, plano
         q = (request.args.get('q') or '').strip()
@@ -87,6 +88,7 @@ def adicionar_aluno_legacy():
 @alunos_bp.route('/api/cadastros/alunos/<cpf>', methods=['PUT'])
 @validate_request(AlunoUpdate, methods=('PUT',), partial=True)
 def atualizar_aluno(cpf):
+    // TODO: REFACTOR - A atualização de aluno faz transformações de domínio diretamente na rota, misturando persistência e regras de negócio.
     normalized_cpf = utils.normalize_cpf(cpf)
     aluno = AlunoCadastro.query.filter_by(cpf=normalized_cpf).first()
     if not aluno:

@@ -45,6 +45,7 @@ export interface WorkoutPlan {
   days: WorkoutDay[]
 }
 
+// TODO: REFACTOR - O banco local de exercícios funciona como fonte única de verdade e de montagem de planos, concentrando regra de negócio e dados em um mesmo ponto.
 // Banco local de exercicios por grupo muscular/categoria.
 // Este objeto alimenta filtros, montagem de treino e planos prontos.
 const exerciseDatabase: Record<ExerciseCategory, Exercise[]> = {
@@ -115,6 +116,7 @@ const exerciseDatabase: Record<ExerciseCategory, Exercise[]> = {
   ],
 }
 
+// TODO: REFACTOR - Os planos são definidos diretamente com referências a exercícios específicos, o que torna os dados rígidos e acoplados à estrutura atual do banco.
 export const workoutPlans: WorkoutPlan[] = [
   {
     id: "hipertrofia-abc",
@@ -338,6 +340,7 @@ export const workoutPlans: WorkoutPlan[] = [
   },
 ]
 
+// TODO: REFACTOR - Os helpers de consulta assumem uma estrutura fixa do banco local, limitando a evolução para outras fontes de dados.
 // Retorna todos os exercicios de uma categoria especifica.
 export function getExercisesByCategory(category: ExerciseCategory): Exercise[] {
   return exerciseDatabase[category]

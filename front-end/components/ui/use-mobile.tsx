@@ -14,6 +14,7 @@ export function useIsMobile() {
   React.useEffect(() => {
     const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
     const onChange = () => {
+      // TODO: REFACTOR - The breakpoint rule is hard-coded in the hook and mixed with viewport event wiring, making responsive behavior harder to evolve.
       setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
     }
     mql.addEventListener('change', onChange)

@@ -14,6 +14,7 @@ except Exception:
     class InvalidTokenError(Exception):
         pass
 
+# TODO: REFACTOR - A configuração de JWT está acoplada a valores globais de ambiente e fallback local, o que pode mascarar políticas distintas por ambiente.
 # Config
 SECRET = os.getenv('JWT_SECRET_KEY') or os.getenv('SECRET_KEY', 'fitpro-dev-key')
 ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
@@ -21,6 +22,7 @@ ACCESS_EXPIRES = int(os.getenv('JWT_ACCESS_EXPIRES', '3600'))  # seconds
 
 
 def create_access_token(identity: dict, expires_delta: int | None = None) -> str:
+    # TODO: REFACTOR - A identidade do usuário é codificada diretamente no token sem uma estratégia explícita de claims e escopo.
     """Cria um JWT com `identity` embutido e claim `exp`.
 
     identity: dicionario com identificadores (ex: {'cpf': '...','role':'admin'})
@@ -51,6 +53,7 @@ def decode_access_token(token: str) -> dict:
 
 def jwt_required(fn):
     """Decorator simples para validar Authorization: Bearer <token> e expirar token."""
+    # TODO: REFACTOR - O decorator mistura autenticação, resposta HTTP e tratamento de erro em um só ponto, dificultando composição com outras políticas.
 
     @wraps(fn)
     def wrapper(*args, **kwargs):

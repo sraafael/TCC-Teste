@@ -27,6 +27,7 @@
 </div>
 
 <script>
+    <!-- TODO: REFACTOR - O dashboard depende diretamente da estrutura do endpoint de estatísticas e do DOM da view, deixando a regra de negócio presa à renderização. -->
     // Ao carregar a pagina, consulta /api/stats e injeta os totais nos cards.
     fetch('/api/stats')
         .then(response => response.json())

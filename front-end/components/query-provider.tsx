@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
 
 export function QueryProvider({ children }: { children: ReactNode }) {
+  // TODO: REFACTOR - Cache policy is hard-coded at the provider level, so each screen cannot independently define freshness rules.
   const [queryClient] = useState(
     () =>
       new QueryClient({

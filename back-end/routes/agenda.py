@@ -11,6 +11,7 @@ agenda_bp = Blueprint('agenda', __name__)
 
 @agenda_bp.route('/api/agenda/classes', methods=['GET'])
 def agenda_classes():
+    // TODO: REFACTOR - A rota mistura garantia de dados iniciais, filtro, paginação e serialização em um único fluxo.
     utils.ensure_default_agenda_classes()
     # Query params: page, limit, q (search by event or professor)
     q = (request.args.get('q') or '').strip()
@@ -47,6 +48,7 @@ def agenda_create_class():
 @agenda_bp.route('/api/agenda/classes/<class_id>', methods=['PUT', 'DELETE'])
 @validate_request(TurmaUpdate, methods=('PUT',), partial=True)
 def agenda_manage_class(class_id):
+    // TODO: REFACTOR - A lógica de atualização e remoção de turma concentra regras de negócio e acesso ao banco em um único ponto.
     utils.ensure_default_agenda_classes()
     turma = TurmaAgenda.query.get(class_id)
     if not turma:
@@ -67,6 +69,7 @@ def agenda_manage_class(class_id):
 @agenda_bp.route('/api/agenda/reallocate-student', methods=['POST'])
 @validate_request(ReallocateStudent, methods=('POST',))
 def agenda_reallocate_student():
+    // TODO: REFACTOR - A realocação de aluno entre turmas depende de vários campos e utilidades auxiliares, o que aumenta o acoplamento desta rota.
     utils.ensure_default_agenda_classes()
     from flask import g
     payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or request.form.to_dict() or {}

@@ -17,6 +17,7 @@ import { Shield, GraduationCap, User, Dumbbell } from "lucide-react"
 type Role = "admin" | "professor" | "student" | null
 type View = "select" | "login" | "dashboard"
 
+// TODO: REFACTOR - A configuração dos perfis está acoplada ao fluxo de navegação e à UI, dificultando extensão para novos papéis ou regras.
 // Configura os metadados visuais/textuais de cada perfil selecionavel na home.
 const roles = {
   admin: {
@@ -57,6 +58,7 @@ export default function Home() {
     setSelectedRole(null)
   }
 
+  // TODO: REFACTOR - A transição de login para dashboard está simulada no estado local, misturando autenticação com controle de tela.
   // Simula autenticacao bem-sucedida e abre o dashboard correspondente.
   const handleLogin = () => {
     setView("dashboard")
@@ -68,6 +70,7 @@ export default function Home() {
     setSelectedRole(null)
   }
 
+  // TODO: REFACTOR - A decisão de renderizar dashboards por perfil está espalhada na página, aumentando o acoplamento entre fluxo e componentes.
   // Renderizacao condicional do dashboard conforme o perfil autenticado.
   if (view === "dashboard" && selectedRole) {
     if (selectedRole === "admin") return <DashboardAdmin onLogout={handleLogout} />

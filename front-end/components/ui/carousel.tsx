@@ -69,6 +69,7 @@ function Carousel({
 
   const onSelect = React.useCallback((api: CarouselApi) => {
     if (!api) return
+    // TODO: REFACTOR - Navigation availability is derived from Embla events directly, so the control state is coupled to library internals.
     setCanScrollPrev(api.canScrollPrev())
     setCanScrollNext(api.canScrollNext())
   }, [])

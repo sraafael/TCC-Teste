@@ -13,6 +13,6 @@ import {
 } from 'next-themes'
 
 export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
-  // Encapsula o provedor de tema para permitir troca de dark/light/system no app.
+  // TODO: REFACTOR - The wrapper only abstracts the library but still hides the app-level theme policy from the rest of the codebase.
   return <NextThemesProvider {...props}>{children}</NextThemesProvider>
 }

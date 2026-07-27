@@ -98,6 +98,7 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
     return null
   }
 
+  // TODO: REFACTOR - Theme variables are injected through inline CSS generation, which tightly couples chart rendering to DOM-side styling.
   return (
     <style
       dangerouslySetInnerHTML={{

@@ -10,6 +10,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  // TODO: REFACTOR - O tema está concentrado em variáveis globais com forte dependência visual, dificultando evolução por contexto ou marca.
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -46,6 +47,7 @@
 }
 
 .dark {
+  // TODO: REFACTOR - O modo escuro é tratado como override global rígido, o que pode gerar inconsistência entre componentes e temas específicos.
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.145 0 0);
@@ -81,6 +83,7 @@
 }
 
 @theme inline {
+  // TODO: REFACTOR - A definição de tokens de tema está acoplada diretamente ao CSS global, reduzindo flexibilidade para composição e reuso.
   --font-sans: 'Geist', 'Geist Fallback';
   --font-mono: 'Geist Mono', 'Geist Mono Fallback';
   --color-background: var(--background);
@@ -122,6 +125,7 @@
 }
 
 @layer base {
+  // TODO: REFACTOR - As regras base aplicam comportamento transversal de forma ampla, o que pode mascarar intentos específicos de componente.
   * {
     @apply border-border outline-ring/50;
   }

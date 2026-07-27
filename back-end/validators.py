@@ -8,6 +8,7 @@ except Exception:
 
 
 def validate_request(schema_model, methods=('POST', 'PUT'), partial=False):
+    # TODO: REFACTOR - O decorator centraliza validação, parsing e resposta HTTP, misturando política de entrada com transporte.
     """Decorator to validate incoming JSON/form payloads using a Pydantic schema.
 
     - `schema_model`: Pydantic BaseModel class

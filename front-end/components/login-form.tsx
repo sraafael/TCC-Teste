@@ -47,6 +47,7 @@ export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, on
   })
 
   const onSubmit = async (data: LoginFormValues) => {
+    // A validação de CPF e o fluxo de recuperação de senha compartilham a mesma regra de identidade, mas hoje estão espalhados em handlers diferentes.
     setLoginError("")
     setResetError("")
 

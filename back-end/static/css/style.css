@@ -75,11 +75,13 @@ th, td {
     text-align: left;
 }
 
+/* TODO: REFACTOR - O layout do dashboard está definido por classes globais rígidas, dificultando adaptação a diferentes telas e componentes. */
 .dashboard {
     display: flex;
     flex-wrap: wrap;
 }
 
+/* TODO: REFACTOR - Os estados de alerta são tratados como variações visuais isoladas, o que pode gerar inconsistência de comportamento entre páginas. */
 .alert {
     padding: 20px;
     margin-bottom: 15px;

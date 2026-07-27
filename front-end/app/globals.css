@@ -9,6 +9,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* TODO: REFACTOR - O tema está definido como um conjunto fixo de variáveis globais, dificultando adaptação por contexto ou produto. */
 /* Paleta principal do tema escuro usado no projeto FitPro. */
 :root {
   --background: oklch(0.13 0.005 250);
@@ -47,6 +48,7 @@
 }
 
 @theme inline {
+  /* TODO: REFACTOR - Os tokens do design system estão diretamente acoplados ao CSS global, limitando reuso e evolução. */
   /* Mapeia variaveis CSS para tokens consumidos pelo Tailwind v4. */
   --font-sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'Space Grotesk', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
@@ -89,6 +91,7 @@
 }
 
 @layer base {
+  /* TODO: REFACTOR - As regras base aplicam comportamento transversal de forma ampla, o que pode mascarar intenções específicas de componente. */
   /* Regras base aplicadas a todos os elementos e ao body. */
   * {
     @apply border-border outline-ring/50;

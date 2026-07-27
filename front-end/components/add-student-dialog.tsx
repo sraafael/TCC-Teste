@@ -46,6 +46,7 @@ export function AddStudentDialog({ onSuccess, onCancel }: AddStudentDialogProps)
   })
 
   const onSubmit = useCallback(async (values: AddStudentForm) => {
+    // TODO: REFACTOR - The dialog is translating form values into backend field names directly, so the API contract is embedded in the UI layer.
     const payload = {
       nome: values.name,
       cpf: typeof values.cpf === "string" ? normalizeCpf(values.cpf) : values.cpf,

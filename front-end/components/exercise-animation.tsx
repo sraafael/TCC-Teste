@@ -166,7 +166,7 @@ function Avatar3D({ type }: { type: string }) {
     </g>
   )
 
-  // Cada case retorna uma animacao diferente conforme o tipo de exercicio recebido.
+  // TODO: REFACTOR - Each exercise variant encodes its own visual rules inside a large switch, making the animation behavior hard to compose and extend.
   switch (type) {
     case "bench-press":
     case "incline-press":

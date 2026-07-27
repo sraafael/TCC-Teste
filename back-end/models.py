@@ -4,6 +4,7 @@ from extensions import db
 
 class SafeModelMixin:
     """Mixin que expõe um `to_dict()` seguro, usando a lista `__public_fields__`.
+    # TODO: REFACTOR - O mixin define uma política de serialização implícita que pode se tornar inconsistente entre modelos e endpoints.
 
     - Evita expor atributos sensiveis (ex.: hashes) por omissao.
     - Converte objetos `date`/`datetime` para ISO strings.
@@ -54,6 +55,7 @@ class PlanoAcademia(SafeModelMixin, db.Model):
 
 
 class AlunoCadastro(SafeModelMixin, db.Model):
+    # TODO: REFACTOR - O modelo concentra dados de cadastro, status financeiro e relacionamento com turmas, misturando conceitos de domínio.
     __tablename__ = 'alunos_cadastro'
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
@@ -75,6 +77,7 @@ class AlunoCadastro(SafeModelMixin, db.Model):
 
 
 class ProfessorCadastro(SafeModelMixin, db.Model):
+    # TODO: REFACTOR - O modelo de professor mistura dados pessoais, carga operacional e status de férias em uma única entidade.
     __tablename__ = 'professores_cadastro'
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
@@ -94,6 +97,7 @@ class ProfessorCadastro(SafeModelMixin, db.Model):
 
 
 class TurmaAgenda(SafeModelMixin, db.Model):
+    # TODO: REFACTOR - A entidade de turma concentra identidade, agenda e capacidade, deixando a regra de ocupação espalhada.
     __tablename__ = 'turmas_agenda'
     id = db.Column(db.String(20), primary_key=True)
     horario = db.Column(db.String(5), nullable=False)
@@ -122,6 +126,7 @@ class TurmaAluno(SafeModelMixin, db.Model):
 
 
 class RecebimentoAluno(SafeModelMixin, db.Model):
+    # TODO: REFACTOR - O registro financeiro mistura pagamento, aluno, referência e status em uma entidade muito ampla.
     __tablename__ = 'recebimentos_alunos'
     id = db.Column(db.Integer, primary_key=True)
     aluno_id = db.Column(db.Integer, db.ForeignKey('alunos_cadastro.id'), nullable=True, index=True)
@@ -145,6 +150,7 @@ class RecebimentoAluno(SafeModelMixin, db.Model):
 
 
 class FolhaPagamentoProfessor(SafeModelMixin, db.Model):
+    # TODO: REFACTOR - A folha de pagamento concentra cálculo, ajuste e referência mensal em uma mesma entidade.
     __tablename__ = 'folha_pagamento_professores'
     id = db.Column(db.Integer, primary_key=True)
     professor_id = db.Column(db.Integer, db.ForeignKey('professores_cadastro.id'), nullable=False, index=True)

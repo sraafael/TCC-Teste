@@ -22,6 +22,7 @@ export function useMutation<T = any>(): UseMutationState<T> & UseMutationActions
   const queryClient = useQueryClient()
 
   const rq = useRQMutation(async ({ endpoint, data, method = "POST" }: { endpoint: string; data?: any; method?: HTTPMethod }) => {
+    // TODO: REFACTOR - A mutação mistura execução da requisição, adaptação de contrato e invalidação de cache em um único fluxo.
     switch (method) {
       case "PUT":
         return (await apiClient.put<T>(endpoint, data)).data || null
@@ -39,8 +40,7 @@ export function useMutation<T = any>(): UseMutationState<T> & UseMutationActions
   const mutate = useCallback(
     async (endpoint: string, data?: any, method: HTTPMethod = "POST") => {
       const res = await rq.mutateAsync({ endpoint, data, method })
-      // Basic strategy: invalidate queries that include the endpoint path
-      // so cached lists are refreshed. This is coarse but practical.
+      // TODO: REFACTOR - A invalidação de queries por substring do endpoint é frágil e pode refrescar dados indevidamente, acoplando a mutação à estrutura das chaves do cache.
       try {
         queryClient.invalidateQueries({ predicate: (query) => {
           try {

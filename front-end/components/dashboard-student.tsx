@@ -200,7 +200,7 @@ function PixModal({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 export function DashboardStudent({ onLogout }: DashboardStudentProps) {
-  // Plano de treino exibido ao aluno (mock local).
+  // TODO: REFACTOR - The workout plan is embedded as local mock state, so progress, completion, and rest rules are coupled to the UI screen.
   const [workoutDays] = useState([
     {
       label: "Treino A",

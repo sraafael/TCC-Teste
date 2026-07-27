@@ -27,11 +27,13 @@ export function useApi<T = any>(initialData: T | null = null): UseApiState<T> & 
       method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" = "GET",
       body?: any
     ): Promise<T | null> => {
+      // TODO: REFACTOR - O fluxo centraliza carregamento, erro e parsing de resposta em um único ponto, dificultando reutilização para outros contratos de API.
       setState((prev) => ({ ...prev, loading: true, error: null }))
 
       try {
         let result: ApiResponse<T>
 
+        // TODO: REFACTOR - O hook depende diretamente do cliente HTTP e do formato de resposta do backend, acoplando a regra de negócio à implementação técnica.
         switch (method) {
           case "POST":
             result = await apiClient.post<T>(endpoint, body)

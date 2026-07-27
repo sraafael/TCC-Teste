@@ -15,6 +15,7 @@ auth_bp = Blueprint('auth', __name__)
 @auth_bp.route('/api/auth/forgot-password', methods=['POST'])
 @validate_request(ForgotPasswordSchema, methods=('POST',))
 def forgot_password():
+    // TODO: REFACTOR - O fluxo de recuperação de senha combina validação, persistência, envio por múltiplos canais e resposta em uma única função.
     from flask import g
     payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or {}
     cpf = utils.normalize_cpf(payload.get('cpf'))
@@ -61,6 +62,7 @@ def forgot_password():
 @auth_bp.route('/api/auth/login', methods=['POST'])
 @validate_request(LoginSchema, methods=('POST',))
 def auth_login():
+    // TODO: REFACTOR - O login concentra autenticação, normalização de CPF, geração de token e montagem de resposta em um único ponto.
     from flask import g
     payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or {}
     cpf = utils.normalize_cpf(payload.get('cpf'))
@@ -99,6 +101,7 @@ def auth_login():
 @auth_bp.route('/api/auth/reset-password', methods=['POST'])
 @validate_request(ResetPasswordSchema, methods=('POST',))
 def reset_password():
+    // TODO: REFACTOR - A redefinição de senha mistura validação de código, expiração e atualização de senha com o fluxo HTTP.
     from flask import g
     payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or {}
     cpf = utils.normalize_cpf(payload.get('cpf'))

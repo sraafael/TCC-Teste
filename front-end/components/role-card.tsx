@@ -18,6 +18,7 @@ interface RoleCardProps {
 }
 
 export function RoleCard({ title, description, icon: Icon, accentColor, onClick }: RoleCardProps) {
+  // TODO: REFACTOR - The card is acting as both navigation trigger and visual container, so role selection logic is coupled to presentation.
   return (
     // Card clicavel que representa um perfil de acesso na pagina inicial.
     <button

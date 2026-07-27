@@ -88,7 +88,7 @@ function SidebarProvider({
         _setOpen(openState)
       }
 
-      // This sets the cookie to keep the sidebar state.
+      // TODO: REFACTOR - Sidebar persistence is coupled to provider state and browser cookies, which makes the behavior hard to reuse outside this wrapper.
       document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
     },
     [setOpenProp, open],

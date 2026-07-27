@@ -8,6 +8,7 @@ export function useQueryApi<T = any>(
   endpoint: string,
   options?: UseQueryOptions<T>
 ) {
+  // TODO: REFACTOR - O hook assume um contrato simples de resposta e uma única estratégia de erro, limitando o reuso para consultas mais complexas.
   return useQuery<T>(key, async () => {
     const result = await apiClient.get<T>(endpoint)
     if (!result.success) {

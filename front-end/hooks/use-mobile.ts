@@ -9,6 +9,7 @@ import * as React from 'react'
 const MOBILE_BREAKPOINT = 768
 
 export function useIsMobile() {
+  // TODO: REFACTOR - A regra de breakpoint está embutida no hook, o que deixa a lógica de layout acoplada à implementação de detecção de viewport.
   // Comeca como undefined ate primeira leitura do viewport no client.
   const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
 

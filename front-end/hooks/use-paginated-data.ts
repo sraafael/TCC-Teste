@@ -34,6 +34,7 @@ export function usePaginatedData<T>(endpoint: string, options: UsePaginatedDataO
   const { data, isLoading, error, refetch } = useQuery(
     queryKey,
     async () => {
+      // TODO: REFACTOR - A montagem da URL com parâmetros de paginação está acoplada ao contrato atual do backend, tornando o hook menos flexível.
       const separator = endpoint.includes("?") ? "&" : "?"
       const url = `${endpoint}${separator}page=${page}&pageSize=${pageSize}`
       const result = await apiClient.get<{ items: T[]; total: number }>(url)
@@ -51,6 +52,7 @@ export function usePaginatedData<T>(endpoint: string, options: UsePaginatedDataO
     }
   )
 
+  // TODO: REFACTOR - O estado local de erro duplica responsabilidade já tratada pelo React Query, o que pode gerar inconsistências na experiência.
   const items = data?.items || []
   const total = data?.total || 0
   const hasMore = page * pageSize < total

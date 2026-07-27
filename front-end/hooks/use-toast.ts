@@ -63,6 +63,7 @@ interface State {
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
 const addToRemoveQueue = (toastId: string) => {
+  // TODO: REFACTOR - A fila de remoção executa efeito colateral dentro do reducer, misturando estado puro com comportamento de tempo.
   // Evita registrar timeout duplicado para o mesmo toast.
   if (toastTimeouts.has(toastId)) {
     return
@@ -80,6 +81,7 @@ const addToRemoveQueue = (toastId: string) => {
 }
 
 export const reducer = (state: State, action: Action): State => {
+  // TODO: REFACTOR - O estado global de toasts mistura apresentação, remoção automática e listeners, tornando a lógica difícil de testar e evoluir.
   // Redutor central: adiciona, atualiza, fecha e remove toasts.
   switch (action.type) {
     case 'ADD_TOAST':

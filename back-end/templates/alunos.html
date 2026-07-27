@@ -26,6 +26,7 @@
 </div>
 
 <script>
+    <!-- TODO: REFACTOR - A view monta a tabela diretamente a partir da API, acoplando apresentação e fluxo de dados no template. -->
     // Busca alunos da API e reconstrói o tbody com os dados mais recentes.
     function carregarAlunos() {
         fetch('/alunos')

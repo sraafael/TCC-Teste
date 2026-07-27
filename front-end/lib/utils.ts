@@ -14,6 +14,7 @@ export function cn(...inputs: ClassValue[]) {
 
 export const normalizeCpf = (value: string) => value.replace(/\D/g, "")
 
+// TODO: REFACTOR - A validação de CPF está embutida em utilidades de apresentação, misturando regra de negócio com formatação.
 export const formatCpf = (value: string) => {
   const digits = normalizeCpf(value).slice(0, 11)
   return digits
@@ -23,6 +24,7 @@ export const formatCpf = (value: string) => {
 }
 
 export const isValidCpf = (value: string) => {
+  // TODO: REFACTOR - A regra de validação de CPF ficou espalhada entre normalização e cálculo de dígitos, o que aumenta o risco de inconsistência.
   const cpf = normalizeCpf(value)
   if (cpf.length !== 11 || /^([0-9])\1{10}$/.test(cpf)) return false
 

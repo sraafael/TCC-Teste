@@ -8,6 +8,7 @@ dashboard_bp = Blueprint('dashboard', __name__)
 
 @dashboard_bp.route('/api/stats', methods=['GET'])
 def get_stats():
+    // TODO: REFACTOR - O endpoint de estatísticas usa fallback implícito entre modelos diferentes, o que esconde uma regra de negócio importante.
     total_alunos_cadastro = AlunoCadastro.query.count()
     total_professores_cadastro = ProfessorCadastro.query.count()
     total_planos_academia = PlanoAcademia.query.count()
