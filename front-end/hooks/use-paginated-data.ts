@@ -24,19 +24,24 @@ interface UsePaginatedDataResult<T> {
   setError: (error: string | null) => void
 }
 
+const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+
+const createPaginatedEndpoint = (endpoint: string, page: number, pageSize: number) => {
+  const separator = endpoint.includes("?") ? "&" : "?"
+  return `${endpoint}${separator}page=${page}&pageSize=${pageSize}`
+}
+
 export function usePaginatedData<T>(endpoint: string, options: UsePaginatedDataOptions = {}): UsePaginatedDataResult<T> {
   const { pageSize = 10, autoFetch = true } = options
   const [page, setPage] = useState(1)
-  const [localError, setLocalError] = useState<string | null>(null)
+  const [manualError, setManualError] = useState<string | null>(null)
 
   const queryKey = [endpoint, page, pageSize] as const
 
   const { data, isLoading, error, refetch } = useQuery(
     queryKey,
     async () => {
-      // TODO: REFACTOR - A montagem da URL com parâmetros de paginação está acoplada ao contrato atual do backend, tornando o hook menos flexível.
-      const separator = endpoint.includes("?") ? "&" : "?"
-      const url = `${endpoint}${separator}page=${page}&pageSize=${pageSize}`
+      const url = createPaginatedEndpoint(endpoint, page, pageSize)
       const result = await apiClient.get<{ items: T[]; total: number }>(url)
       if (!result.success) {
         throw new Error(result.error || "Erro ao buscar dados paginados")
@@ -47,14 +52,13 @@ export function usePaginatedData<T>(endpoint: string, options: UsePaginatedDataO
       keepPreviousData: true,
       enabled: autoFetch,
       onError: (err) => {
-        setLocalError(err instanceof Error ? err.message : String(err))
+        setManualError(getErrorMessage(err))
       },
     }
   )
 
-  // TODO: REFACTOR - O estado local de erro duplica responsabilidade já tratada pelo React Query, o que pode gerar inconsistências na experiência.
-  const items = data?.items || []
-  const total = data?.total || 0
+  const items = data?.items ?? []
+  const total = data?.total ?? 0
   const hasMore = page * pageSize < total
 
   const nextPage = useCallback(() => {
@@ -76,7 +80,7 @@ export function usePaginatedData<T>(endpoint: string, options: UsePaginatedDataO
   return {
     items,
     loading: isLoading,
-    error: localError || (error instanceof Error ? error.message : null),
+    error: manualError ?? (error ? getErrorMessage(error) : null),
     page,
     pageSize,
     total,
@@ -85,7 +89,7 @@ export function usePaginatedData<T>(endpoint: string, options: UsePaginatedDataO
     prevPage,
     goToPage,
     refresh,
-    setError: setLocalError,
+    setError: setManualError,
   }
 }
 

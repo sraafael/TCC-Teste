@@ -5,6 +5,7 @@ from models import PlanoAcademia
 from extensions import db
 from validators import validate_request
 from schemas import PlanoCreate, PlanoUpdate, PlanReallocate
+from ._helpers import get_pagination_arguments, get_request_payload, serialize_pagination
 
 planos_bp = Blueprint('planos', __name__)
 
@@ -12,18 +13,12 @@ planos_bp = Blueprint('planos', __name__)
 @planos_bp.route('/api/planos', methods=['GET', 'POST'])
 @validate_request(PlanoCreate, methods=('POST',))
 def academy_plans():
-    // TODO: REFACTOR - A rota de planos mistura criação de dados padrão, filtragem, paginação e persistência em uma única função.
     utils.ensure_default_academy_plans()
 
     if request.method == 'GET':
         q = (request.args.get('q') or '').strip()
         ativo = request.args.get('ativo')
-        try:
-            page = int(request.args.get('page', 1))
-            per_page = int(request.args.get('limit', 20))
-        except Exception:
-            page = 1
-            per_page = 20
+        page, per_page = get_pagination_arguments()
 
         query = PlanoAcademia.query
         if q:
@@ -35,10 +30,10 @@ def academy_plans():
 
         pagination = query.order_by(PlanoAcademia.id.asc()).paginate(page=page, per_page=per_page, error_out=False)
         items = [utils.serialize_plano_academia(plano) for plano in pagination.items]
-        meta = {'total': pagination.total, 'pages': pagination.pages, 'page': pagination.page, 'per_page': pagination.per_page}
+        meta = serialize_pagination(pagination)
         return jsonify({'success': True, 'data': items, 'meta': meta})
 
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    payload = get_request_payload()
     response_body, status_code = utils.persist_plano_academia(payload)
     return jsonify(response_body), status_code
 
@@ -46,7 +41,6 @@ def academy_plans():
 @planos_bp.route('/api/planos/<int:plan_id>', methods=['PUT', 'DELETE'])
 @validate_request(PlanoUpdate, methods=('PUT',), partial=True)
 def academy_plan_detail(plan_id):
-    // TODO: REFACTOR - A regra de impedir remoção com alunos ativos está embutida na rota, acoplando negócio à camada HTTP.
     plan = PlanoAcademia.query.get(plan_id)
     if not plan:
         return jsonify({'error': 'Plano nao encontrado.'}), 404
@@ -64,7 +58,7 @@ def academy_plan_detail(plan_id):
         db.session.commit()
         return jsonify({'message': 'Plano removido com sucesso.'})
 
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    payload = get_request_payload()
     response_body, status_code = utils.persist_plano_academia(payload, existing_plan=plan)
     return jsonify(response_body), status_code
 
@@ -75,7 +69,7 @@ def academy_plan_status(plan_id):
     if not plan:
         return jsonify({'error': 'Plano nao encontrado.'}), 404
 
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    payload = get_request_payload()
     next_status = utils.parse_bool(payload.get('active', payload.get('ativo')), default=plan.ativo)
     plan.ativo = next_status
     db.session.add(plan)
@@ -86,7 +80,6 @@ def academy_plan_status(plan_id):
 @planos_bp.route('/api/planos/<int:plan_id>/realocar-alunos', methods=['POST'])
 @validate_request(PlanReallocate, methods=('POST',))
 def academy_plan_reallocate_students(plan_id):
-    // TODO: REFACTOR - A realocação de alunos entre planos tem validações e transformações de domínio diretamente na rota.
     source_plan = PlanoAcademia.query.get(plan_id)
     if not source_plan:
         return jsonify({'error': 'Plano de origem nao encontrado.'}), 404

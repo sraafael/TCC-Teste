@@ -2,7 +2,7 @@
 
 import { useCallback } from "react"
 import { useMutation as useRQMutation, useQueryClient } from "@tanstack/react-query"
-import { apiClient } from "@/lib/api-client"
+import { apiClient, type ApiResponse } from "@/lib/api-client"
 
 type HTTPMethod = "POST" | "PUT" | "PATCH" | "DELETE"
 
@@ -14,45 +14,63 @@ interface UseMutationState<T> {
 }
 
 interface UseMutationActions<T> {
-  mutate: (endpoint: string, data?: any, method?: HTTPMethod) => Promise<T | null>
+  mutate: (endpoint: string, data?: unknown, method?: HTTPMethod) => Promise<T | null>
   reset: () => void
 }
 
-export function useMutation<T = any>(): UseMutationState<T> & UseMutationActions<T> {
+interface MutationRequest {
+  endpoint: string
+  data?: unknown
+  method?: HTTPMethod
+}
+
+const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+
+const queryKeyIncludesEndpoint = (queryKey: unknown, endpoint: string) => {
+  try {
+    return JSON.stringify(queryKey).includes(endpoint)
+  } catch {
+    return false
+  }
+}
+
+const executeMutation = async <T,>({ endpoint, data, method = "POST" }: MutationRequest): Promise<T | null> => {
+  let response: ApiResponse<T>
+
+  switch (method) {
+    case "PUT":
+      response = await apiClient.put<T>(endpoint, data)
+      break
+    case "PATCH":
+      response = await apiClient.patch<T>(endpoint, data)
+      break
+    case "DELETE":
+      response = await apiClient.delete<T>(endpoint)
+      break
+    default:
+      response = await apiClient.post<T>(endpoint, data)
+  }
+
+  if (!response.success) throw new Error(response.error || "Erro ao processar requisição")
+  return response.data ?? null
+}
+
+const invalidateEndpointQueries = (endpoint: string, queryClient: ReturnType<typeof useQueryClient>) => {
+  void queryClient.invalidateQueries({
+    predicate: (query) => queryKeyIncludesEndpoint(query.queryKey, endpoint),
+  })
+}
+
+export function useMutation<T = unknown>(): UseMutationState<T> & UseMutationActions<T> {
   const queryClient = useQueryClient()
 
-  const rq = useRQMutation(async ({ endpoint, data, method = "POST" }: { endpoint: string; data?: any; method?: HTTPMethod }) => {
-    // TODO: REFACTOR - A mutação mistura execução da requisição, adaptação de contrato e invalidação de cache em um único fluxo.
-    switch (method) {
-      case "PUT":
-        return (await apiClient.put<T>(endpoint, data)).data || null
-      case "PATCH":
-        return (await apiClient.patch<T>(endpoint, data)).data || null
-      case "DELETE":
-        return (await apiClient.delete<T>(endpoint)).data || null
-      case "POST":
-      default:
-        return (await apiClient.post<T>(endpoint, data)).data || null
-    }
-  })
+  const rq = useRQMutation((request: MutationRequest) => executeMutation<T>(request))
 
-  // mutate wrapper to keep previous signature
   const mutate = useCallback(
-    async (endpoint: string, data?: any, method: HTTPMethod = "POST") => {
+    async (endpoint: string, data?: unknown, method: HTTPMethod = "POST") => {
       const res = await rq.mutateAsync({ endpoint, data, method })
-      // TODO: REFACTOR - A invalidação de queries por substring do endpoint é frágil e pode refrescar dados indevidamente, acoplando a mutação à estrutura das chaves do cache.
-      try {
-        queryClient.invalidateQueries({ predicate: (query) => {
-          try {
-            return JSON.stringify(query.queryKey).includes(endpoint)
-          } catch {
-            return false
-          }
-        }})
-      } catch {
-        // ignore invalidation errors
-      }
-      return res as T | null
+      invalidateEndpointQueries(endpoint, queryClient)
+      return res
     },
     [rq, queryClient]
   )
@@ -60,9 +78,9 @@ export function useMutation<T = any>(): UseMutationState<T> & UseMutationActions
   const reset = rq.reset
 
   return {
-    data: (rq.data as T) || null,
+    data: rq.data ?? null,
     loading: rq.isLoading,
-    error: rq.error ? (rq.error instanceof Error ? rq.error.message : String(rq.error)) : null,
+    error: rq.error ? getErrorMessage(rq.error) : null,
     success: rq.isSuccess,
     mutate,
     reset,

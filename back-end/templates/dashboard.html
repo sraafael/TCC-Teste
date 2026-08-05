@@ -1,13 +1,8 @@
-<!--
-  Arquivo: back-end/templates/dashboard.html
-  Area: Back-end Flask
-  Funcao: Arquivo de suporte do projeto.
-  Onde fica: /back-end/templates/dashboard.html
--->
 {% extends "base.html" %}
 
+{% block title %}Dashboard - Studio Bio Fitness{% endblock %}
+
 {% block content %}
-<!-- Blocos de resumo: valores preenchidos dinamicamente pelo script abaixo. -->
 <div class="container mt-4">
     <h1 class="mb-4">Dashboard - Studio Bio Fitness</h1>
     <div class="row">
@@ -23,18 +18,25 @@
                 <p id="total-planos" class="display-4">0</p>
             </div>
         </div>
-        </div>
+    </div>
 </div>
 
 <script>
-    <!-- TODO: REFACTOR - O dashboard depende diretamente da estrutura do endpoint de estatísticas e do DOM da view, deixando a regra de negócio presa à renderização. -->
-    // Ao carregar a pagina, consulta /api/stats e injeta os totais nos cards.
+    const statsElementIds = {
+        total_alunos: 'total-alunos',
+        total_planos: 'total-planos',
+    };
+
+    function renderStats(stats) {
+        Object.entries(statsElementIds).forEach(([key, elementId]) => {
+            const element = document.getElementById(elementId);
+            if (element && typeof stats[key] !== 'undefined') element.innerText = stats[key];
+        });
+    }
+
     fetch('/api/stats')
-        .then(response => response.json())
-        .then(data => {
-            document.getElementById('total-alunos').innerText = data.total_alunos;
-            document.getElementById('total-planos').innerText = data.total_planos;
-        })
-        .catch(err => console.error("Erro ao carregar dashboard:", err));
+        .then((response) => response.json())
+        .then((data) => renderStats(data.data || data))
+        .catch((error) => console.error('Erro ao carregar dashboard:', error));
 </script>
 {% endblock %}

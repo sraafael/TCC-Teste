@@ -21,6 +21,10 @@ interface ErrorAlertProps {
   title?: string
 }
 
+function getSkeletonItems(count: number) {
+  return Array.from({ length: count }, (_, index) => index)
+}
+
 export function LoadingSkeleton({
   count = 3,
   height = "h-12",
@@ -28,9 +32,9 @@ export function LoadingSkeleton({
 }: LoadingSkeletonProps) {
   return (
     <div className={`flex flex-col gap-3 ${className}`}>
-      {Array.from({ length: count }).map((_, i) => (
+      {getSkeletonItems(count).map((index) => (
         <div
-          key={i}
+          key={index}
           className={`${height} bg-gradient-to-r from-muted to-muted-foreground/20 rounded-lg animate-pulse`}
         />
       ))}
@@ -47,9 +51,7 @@ export function ErrorAlert({
     <div className="flex items-start gap-4 rounded-lg border border-red-200/30 bg-red-50/50 dark:border-red-900/50 dark:bg-red-950/20 p-4">
       <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
       <div className="flex-1">
-        <h3 className="font-semibold text-red-900 dark:text-red-200 text-sm">
-          {title}
-        </h3>
+        <h3 className="font-semibold text-red-900 dark:text-red-200 text-sm">{title}</h3>
         <p className="text-red-800 dark:text-red-300 text-sm mt-1">{error}</p>
       </div>
       {onDismiss && (
@@ -83,13 +85,16 @@ export function ApiState({
   loadingMessage = "Carregando...",
   skeletonCount = 3,
 }: ApiStateProps) {
-  // TODO: REFACTOR - These shared state helpers now decide both UI rendering and error policy, which makes every new state variant harder to evolve.
   if (loading) {
     return <LoadingOverlay message={loadingMessage} />
   }
 
   if (error) {
     return <ErrorAlert error={error} />
+  }
+
+  if (skeletonCount < 0) {
+    return null
   }
 
   return <>{children}</>

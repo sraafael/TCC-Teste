@@ -12,23 +12,37 @@ from schemas import ForgotPasswordSchema, LoginSchema, ResetPasswordSchema
 auth_bp = Blueprint('auth', __name__)
 
 
+def get_validated_payload():
+    from flask import g
+
+    return getattr(g, 'validated_data', None) or request.get_json(silent=True) or {}
+
+
+def get_user_by_cpf_and_role(cpf, role):
+    query = Usuario.query.filter_by(cpf=cpf)
+    return query.filter_by(role=role).first() if role else query.first()
+
+
+def is_expired_reset_code(user):
+    return (
+        not user.reset_code_hash
+        or user.reset_code_used
+        or not user.reset_code_expires_at
+        or user.reset_code_expires_at < datetime.now()
+    )
+
+
 @auth_bp.route('/api/auth/forgot-password', methods=['POST'])
 @validate_request(ForgotPasswordSchema, methods=('POST',))
 def forgot_password():
-    // TODO: REFACTOR - O fluxo de recuperação de senha combina validação, persistência, envio por múltiplos canais e resposta em uma única função.
-    from flask import g
-    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or {}
+    payload = get_validated_payload()
     cpf = utils.normalize_cpf(payload.get('cpf'))
     role = (payload.get('role') or '').strip().lower()
 
     if len(cpf) != 11:
         return jsonify({'error': 'CPF invalido. Informe 11 digitos.'}), 400
 
-    query = Usuario.query.filter_by(cpf=cpf)
-    if role:
-        query = query.filter_by(role=role)
-
-    user = query.first()
+    user = get_user_by_cpf_and_role(cpf, role)
     if not user:
         return jsonify({'error': 'Nenhum usuario encontrado para este CPF.'}), 404
 
@@ -62,9 +76,7 @@ def forgot_password():
 @auth_bp.route('/api/auth/login', methods=['POST'])
 @validate_request(LoginSchema, methods=('POST',))
 def auth_login():
-    // TODO: REFACTOR - O login concentra autenticação, normalização de CPF, geração de token e montagem de resposta em um único ponto.
-    from flask import g
-    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or {}
+    payload = get_validated_payload()
     cpf = utils.normalize_cpf(payload.get('cpf'))
     password = str(payload.get('password') or '')
     role = (payload.get('role') or '').strip().lower()
@@ -101,9 +113,7 @@ def auth_login():
 @auth_bp.route('/api/auth/reset-password', methods=['POST'])
 @validate_request(ResetPasswordSchema, methods=('POST',))
 def reset_password():
-    // TODO: REFACTOR - A redefinição de senha mistura validação de código, expiração e atualização de senha com o fluxo HTTP.
-    from flask import g
-    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or {}
+    payload = get_validated_payload()
     cpf = utils.normalize_cpf(payload.get('cpf'))
     code = str(payload.get('code') or '').strip()
     new_password = str(payload.get('new_password') or '')
@@ -116,20 +126,12 @@ def reset_password():
     if len(new_password) < 6:
         return jsonify({'error': 'A nova senha precisa ter ao menos 6 caracteres.'}), 400
 
-    query = Usuario.query.filter_by(cpf=cpf)
-    if role:
-        query = query.filter_by(role=role)
-    user = query.first()
+    user = get_user_by_cpf_and_role(cpf, role)
 
     if not user:
         return jsonify({'error': 'Usuario nao encontrado.'}), 404
 
-    if (
-        not user.reset_code_hash
-        or user.reset_code_used
-        or not user.reset_code_expires_at
-        or user.reset_code_expires_at < datetime.now()
-    ):
+    if is_expired_reset_code(user):
         return jsonify({'error': 'Codigo expirado ou inexistente. Solicite um novo codigo.'}), 400
 
     if not check_password_hash(user.reset_code_hash, code):

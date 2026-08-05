@@ -47,13 +47,9 @@ import {
   FileText,
   PenLine,
   TrendingUp,
-  ChevronDown,
-  ChevronUp,
-  X,
   UserCheck,
   UserX,
   CheckCircle2,
-  XCircle,
   MapPin,
 } from "lucide-react"
 import { workoutPlans, getAllExercises, getExercisesByCategory, getCategoryLabel, type Exercise, type WorkoutPlan, type GoalType, type ExerciseCategory } from "@/lib/workout-data"
@@ -104,6 +100,57 @@ interface ProfessorAgendaClass {
   students: ProfessorAgendaStudent[]
 }
 
+type ScratchWorkoutDay = {
+  label: string
+  muscleGroups: string
+  exercises: Exercise[]
+}
+
+type StudentPlanUpdate = (plan: WorkoutPlan) => WorkoutPlan
+
+const EXERCISE_CATEGORIES: ExerciseCategory[] = [
+  "peito", "costas", "pernas", "ombros", "biceps", "triceps", "abdomen", "gluteos", "cardio",
+]
+
+const createScratchWorkoutDays = (): ScratchWorkoutDay[] => [
+  { label: "Treino A", muscleGroups: "", exercises: [] },
+  { label: "Treino B", muscleGroups: "", exercises: [] },
+  { label: "Treino C", muscleGroups: "", exercises: [] },
+]
+
+const getToday = () => new Date().toISOString().split("T")[0]
+
+const cloneWorkoutPlan = (plan: WorkoutPlan): WorkoutPlan => ({
+  ...plan,
+  days: plan.days.map((day) => ({ ...day, exercises: day.exercises.map((exercise) => ({ ...exercise })) })),
+})
+
+const updatePlanExercise = (
+  plan: WorkoutPlan,
+  dayIndex: number,
+  exerciseIndex: number,
+  updateExercise: (exercises: Exercise[]) => Exercise[]
+): WorkoutPlan => {
+  const day = plan.days[dayIndex]
+  if (!day) return plan
+
+  return {
+    ...plan,
+    days: plan.days.map((currentDay, index) =>
+      index === dayIndex ? { ...currentDay, exercises: updateExercise(currentDay.exercises) } : currentDay
+    ),
+  }
+}
+
+const filterExercises = (category: ExerciseCategory | "all", search: string): Exercise[] => {
+  const exercises = category === "all" ? getAllExercises() : getExercisesByCategory(category)
+  const normalizedSearch = search.trim().toLowerCase()
+
+  return normalizedSearch
+    ? exercises.filter((exercise) => exercise.name.toLowerCase().includes(normalizedSearch))
+    : exercises
+}
+
 function calculateIMC(weight: number, height: number): number {
   // O IMC é usado como regra de classificação de risco para a tela, então qualquer ajuste na fórmula precisa ser tratado com cuidado.
   if (height <= 0) return 0
@@ -131,25 +178,13 @@ function getTrainingStatusInfo(status: TrainingStatus) {
   }
 }
 
-function daysSince(dateStr: string): number {
-  // Diferenca em dias entre hoje e a data informada.
-  const d = new Date(dateStr)
-  const now = new Date()
-  return Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
-}
-
-function formatIsoDate(dateStr: string) {
-  if (!dateStr) return "-"
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString("pt-BR")
-}
-
 export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
   // Estado principal de alunos acompanhados pelo professor.
   const [students, setStudents] = useState<StudentData[]>([
     {
       id: "1", name: "Ana Costa", cpf: "2024001001", age: 25, weight: 62, height: 165,
       imc: calculateIMC(62, 165), goal: "hipertrofia",
-      plan: JSON.parse(JSON.stringify(workoutPlans[0])),
+      plan: cloneWorkoutPlan(workoutPlans[0]),
       status: "ativo", trainingStatus: "ativo", startDate: "2025-01-15", lastPlanDate: "2026-01-20",
       evolution: [
         { date: "2026-01-20", weight: 62, note: "Inicio do treino de hipertrofia." },
@@ -159,7 +194,7 @@ export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
     {
       id: "2", name: "Bruno Lima", cpf: "2024001002", age: 30, weight: 95, height: 178,
       imc: calculateIMC(95, 178), goal: "emagrecimento",
-      plan: JSON.parse(JSON.stringify(workoutPlans[1])),
+      plan: cloneWorkoutPlan(workoutPlans[1]),
       status: "ativo", trainingStatus: "vencendo", startDate: "2025-02-01", lastPlanDate: "2026-01-05",
       evolution: [
         { date: "2026-01-05", weight: 97, note: "Inicio com foco em emagrecimento." },
@@ -169,7 +204,7 @@ export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
     {
       id: "3", name: "Carla Mota", cpf: "2024001003", age: 22, weight: 55, height: 160,
       imc: calculateIMC(55, 160), goal: "condicionamento",
-      plan: JSON.parse(JSON.stringify(workoutPlans[2])),
+      plan: cloneWorkoutPlan(workoutPlans[2]),
       status: "ativo", trainingStatus: "ativo", startDate: "2025-01-20", lastPlanDate: "2026-02-15",
       evolution: [
         { date: "2026-02-15", weight: 55, note: "Condicionamento em dia. Mantendo." },
@@ -208,11 +243,7 @@ export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
   const [addWorkoutMode, setAddWorkoutMode] = useState<"choose" | "template" | "scratch" | null>(null)
   const [selectedTemplate, setSelectedTemplate] = useState<GoalType | "">("")
   const [scratchGoal, setScratchGoal] = useState<GoalType | "">("")
-  const [scratchDays, setScratchDays] = useState<{ label: string; muscleGroups: string; exercises: Exercise[] }[]>([
-    { label: "Treino A", muscleGroups: "", exercises: [] },
-    { label: "Treino B", muscleGroups: "", exercises: [] },
-    { label: "Treino C", muscleGroups: "", exercises: [] },
-  ])
+  const [scratchDays, setScratchDays] = useState<ScratchWorkoutDay[]>(createScratchWorkoutDays)
   const [scratchAddExDay, setScratchAddExDay] = useState<number | null>(null)
   const [scratchExCategoryFilter, setScratchExCategoryFilter] = useState<ExerciseCategory | "all">("all")
   const [scratchExSearch, setScratchExSearch] = useState("")
@@ -221,6 +252,9 @@ export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
   // Estados do formulario de evolucao corporal.
   const [evoWeight, setEvoWeight] = useState("")
   const [evoNote, setEvoNote] = useState("")
+  
+  // Refatoração tirar toda essa parte da agenda e colocar no back-end, mas por enquanto é mock para visualizacao de turmas e alunos.
+
   // Agenda diaria do professor (mock para visualizacao de turmas).
   const [todayClasses, setTodayClasses] = useState<ProfessorAgendaClass[]>([
     {
@@ -296,6 +330,17 @@ export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
   ])
   const [showClassDetail, setShowClassDetail] = useState<ProfessorAgendaClass | null>(null)
 
+  const updateStudent = (studentId: string, update: (student: StudentData) => StudentData) => {
+    setStudents((currentStudents) =>
+      currentStudents.map((student) => (student.id === studentId ? update(student) : student))
+    )
+    setShowStudentDetail((student) => (student?.id === studentId ? update(student) : student))
+  }
+
+  const updateStudentPlan = (studentId: string, update: StudentPlanUpdate) => {
+    updateStudent(studentId, (student) => (student.plan ? { ...student, plan: update(student.plan) } : student))
+  }
+
   // Subconjuntos para priorizar alunos sem treino ou com treino para vencer.
   const pendingStudents = students.filter((s) => s.trainingStatus === "sem-treino")
   const expiringStudents = students.filter((s) => s.trainingStatus === "vencendo")
@@ -331,31 +376,11 @@ export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
     if (!showSwapExercise) return
     const { studentId, dayIndex, exerciseIndex } = showSwapExercise
 
-    setStudents((prev) =>
-      prev.map((s) => {
-        if (s.id !== studentId || !s.plan) return s
-        const updatedPlan = { ...s.plan }
-        const updatedDays = [...updatedPlan.days]
-        const updatedExercises = [...updatedDays[dayIndex].exercises]
-        updatedExercises[exerciseIndex] = { ...newExercise }
-        updatedDays[dayIndex] = { ...updatedDays[dayIndex], exercises: updatedExercises }
-        updatedPlan.days = updatedDays
-        return { ...s, plan: updatedPlan }
-      })
+    updateStudentPlan(studentId, (plan) =>
+      updatePlanExercise(plan, dayIndex, exerciseIndex, (exercises) =>
+        exercises.map((exercise, index) => (index === exerciseIndex ? { ...newExercise } : exercise))
+      )
     )
-
-    if (showStudentDetail && showStudentDetail.id === studentId) {
-      setShowStudentDetail((prev) => {
-        if (!prev || !prev.plan) return prev
-        const updatedPlan = { ...prev.plan }
-        const updatedDays = [...updatedPlan.days]
-        const updatedExercises = [...updatedDays[dayIndex].exercises]
-        updatedExercises[exerciseIndex] = { ...newExercise }
-        updatedDays[dayIndex] = { ...updatedDays[dayIndex], exercises: updatedExercises }
-        updatedPlan.days = updatedDays
-        return { ...prev, plan: updatedPlan }
-      })
-    }
 
     setShowSwapExercise(null)
     setSwapCategoryFilter("all")
@@ -364,29 +389,11 @@ export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
 
   // Remove exercicio do dia de treino selecionado.
   const handleRemoveExercise = (studentId: string, dayIndex: number, exerciseIndex: number) => {
-    setStudents((prev) =>
-      prev.map((s) => {
-        if (s.id !== studentId || !s.plan) return s
-        const updatedPlan = { ...s.plan }
-        const updatedDays = [...updatedPlan.days]
-        const updatedExercises = updatedDays[dayIndex].exercises.filter((_, i) => i !== exerciseIndex)
-        updatedDays[dayIndex] = { ...updatedDays[dayIndex], exercises: updatedExercises }
-        updatedPlan.days = updatedDays
-        return { ...s, plan: updatedPlan }
-      })
+    updateStudentPlan(studentId, (plan) =>
+      updatePlanExercise(plan, dayIndex, exerciseIndex, (exercises) =>
+        exercises.filter((_, index) => index !== exerciseIndex)
+      )
     )
-
-    if (showStudentDetail && showStudentDetail.id === studentId) {
-      setShowStudentDetail((prev) => {
-        if (!prev || !prev.plan) return prev
-        const updatedPlan = { ...prev.plan }
-        const updatedDays = [...updatedPlan.days]
-        const updatedExercises = updatedDays[dayIndex].exercises.filter((_, i) => i !== exerciseIndex)
-        updatedDays[dayIndex] = { ...updatedDays[dayIndex], exercises: updatedExercises }
-        updatedPlan.days = updatedDays
-        return { ...prev, plan: updatedPlan }
-      })
-    }
   }
 
   // Atribui plano pronto a partir dos templates definidos em workout-data.ts.
@@ -394,22 +401,16 @@ export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
     if (!selectedTemplate) return
     const plan = workoutPlans.find((p) => p.goal === selectedTemplate)
     if (!plan) return
-    const newPlan = JSON.parse(JSON.stringify(plan))
-    const today = new Date().toISOString().split("T")[0]
+    const newPlan = cloneWorkoutPlan(plan)
+    const today = getToday()
 
-    setStudents((prev) =>
-      prev.map((s) =>
-        s.id === studentId
-          ? { ...s, plan: newPlan, goal: selectedTemplate, trainingStatus: "ativo" as TrainingStatus, lastPlanDate: today }
-          : s
-      )
-    )
-
-    if (showStudentDetail && showStudentDetail.id === studentId) {
-      setShowStudentDetail((prev) =>
-        prev ? { ...prev, plan: newPlan, goal: selectedTemplate, trainingStatus: "ativo" as TrainingStatus, lastPlanDate: today } : prev
-      )
-    }
+    updateStudent(studentId, (student) => ({
+      ...student,
+      plan: newPlan,
+      goal: selectedTemplate,
+      trainingStatus: "ativo",
+      lastPlanDate: today,
+    }))
 
     resetAddWorkout()
   }
@@ -425,21 +426,15 @@ export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
       description: "Treino personalizado",
       days: scratchDays.map((d) => ({ ...d })),
     }
-    const today = new Date().toISOString().split("T")[0]
+    const today = getToday()
 
-    setStudents((prev) =>
-      prev.map((s) =>
-        s.id === studentId
-          ? { ...s, plan: newPlan, goal: scratchGoal, trainingStatus: "ativo" as TrainingStatus, lastPlanDate: today }
-          : s
-      )
-    )
-
-    if (showStudentDetail && showStudentDetail.id === studentId) {
-      setShowStudentDetail((prev) =>
-        prev ? { ...prev, plan: newPlan, goal: scratchGoal, trainingStatus: "ativo" as TrainingStatus, lastPlanDate: today } : prev
-      )
-    }
+    updateStudent(studentId, (student) => ({
+      ...student,
+      plan: newPlan,
+      goal: scratchGoal,
+      trainingStatus: "ativo",
+      lastPlanDate: today,
+    }))
 
     resetAddWorkout()
   }
@@ -450,11 +445,7 @@ export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
     setAddWorkoutMode(null)
     setSelectedTemplate("")
     setScratchGoal("")
-    setScratchDays([
-      { label: "Treino A", muscleGroups: "", exercises: [] },
-      { label: "Treino B", muscleGroups: "", exercises: [] },
-      { label: "Treino C", muscleGroups: "", exercises: [] },
-    ])
+    setScratchDays(createScratchWorkoutDays())
     setScratchAddExDay(null)
     setScratchExCategoryFilter("all")
     setScratchExSearch("")
@@ -480,32 +471,19 @@ export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
 
   const handleAddEvolution = (studentId: string) => {
     if (!evoWeight) return
+    const weight = Number(evoWeight)
     const entry: EvolutionEntry = {
-      date: new Date().toISOString().split("T")[0],
-      weight: Number(evoWeight),
+      date: getToday(),
+      weight,
       note: evoNote,
     }
 
-    setStudents((prev) =>
-      prev.map((s) =>
-        s.id === studentId
-          ? { ...s, weight: Number(evoWeight), imc: calculateIMC(Number(evoWeight), s.height), evolution: [...s.evolution, entry] }
-          : s
-      )
-    )
-
-    if (showStudentDetail && showStudentDetail.id === studentId) {
-      setShowStudentDetail((prev) =>
-        prev
-          ? {
-              ...prev,
-              weight: Number(evoWeight),
-              imc: calculateIMC(Number(evoWeight), prev.height),
-              evolution: [...prev.evolution, entry],
-            }
-          : prev
-      )
-    }
+    updateStudent(studentId, (student) => ({
+      ...student,
+      weight,
+      imc: calculateIMC(weight, student.height),
+      evolution: [...student.evolution, entry],
+    }))
 
     setEvoWeight("")
     setEvoNote("")
@@ -517,33 +495,8 @@ export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
       s.cpf.includes(searchQuery)
   )
 
-  const getSwapExercises = () => {
-    let exercises: Exercise[] = []
-    if (swapCategoryFilter === "all") {
-      exercises = getAllExercises()
-    } else {
-      exercises = getExercisesByCategory(swapCategoryFilter)
-    }
-    if (swapSearch) {
-      exercises = exercises.filter((e) => e.name.toLowerCase().includes(swapSearch.toLowerCase()))
-    }
-    return exercises
-  }
-
-  const getScratchExercises = () => {
-    let exercises: Exercise[] = []
-    if (scratchExCategoryFilter === "all") {
-      exercises = getAllExercises()
-    } else {
-      exercises = getExercisesByCategory(scratchExCategoryFilter)
-    }
-    if (scratchExSearch) {
-      exercises = exercises.filter((e) => e.name.toLowerCase().includes(scratchExSearch.toLowerCase()))
-    }
-    return exercises
-  }
-
-  const categories: ExerciseCategory[] = ["peito", "costas", "pernas", "ombros", "biceps", "triceps", "abdomen", "gluteos", "cardio"]
+  const getSwapExercises = () => filterExercises(swapCategoryFilter, swapSearch)
+  const getScratchExercises = () => filterExercises(scratchExCategoryFilter, scratchExSearch)
 
   return (
     <div className="min-h-screen bg-background">
@@ -1237,7 +1190,7 @@ export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
                           >
                             Todos
                           </button>
-                          {categories.map((cat) => (
+                          {EXERCISE_CATEGORIES.map((cat) => (
                             <button
                               key={cat}
                               onClick={() => setScratchExCategoryFilter(cat)}
@@ -1312,7 +1265,7 @@ export function DashboardProfessor({ onLogout }: DashboardProfessorProps) {
               >
                 Todos
               </button>
-              {categories.map((cat) => (
+              {EXERCISE_CATEGORIES.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setSwapCategoryFilter(cat)}

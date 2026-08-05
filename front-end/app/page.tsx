@@ -6,16 +6,17 @@
  */
 "use client"
 
-import { useState } from "react"
-import { RoleCard } from "@/components/role-card"
-import { LoginForm } from "@/components/login-form"
+import { useState, type ComponentType } from "react"
+import { Dumbbell, GraduationCap, Shield, User } from "lucide-react"
 import { DashboardAdmin } from "@/components/dashboard-admin"
 import { DashboardProfessor } from "@/components/dashboard-professor"
 import { DashboardStudent } from "@/components/dashboard-student"
-import { Shield, GraduationCap, User, Dumbbell } from "lucide-react"
+import { LoginForm } from "@/components/login-form"
+import { RoleCard } from "@/components/role-card"
 
 type Role = "admin" | "professor" | "student" | null
 type View = "select" | "login" | "dashboard"
+type RoleKey = Exclude<Role, null>
 
 type RoleConfig = {
   label: string
@@ -24,7 +25,11 @@ type RoleConfig = {
   accentColor: string
 }
 
-const roles: Record<Exclude<Role, null>, RoleConfig> = {
+type DashboardProps = {
+  onLogout: () => void
+}
+
+const roles: Record<RoleKey, RoleConfig> = {
   admin: {
     label: "Administração",
     description: "Gerencie alunos, professores, financeiro e relatorios.",
@@ -45,26 +50,45 @@ const roles: Record<Exclude<Role, null>, RoleConfig> = {
   },
 }
 
-const roleOrder = Object.keys(roles) as Array<Exclude<Role, null>>
+const roleOrder: RoleKey[] = Object.keys(roles) as RoleKey[]
 
-const dashboardByRole = {
+const dashboardByRole: Record<RoleKey, ComponentType<DashboardProps>> = {
   admin: DashboardAdmin,
   professor: DashboardProfessor,
   student: DashboardStudent,
-} as const
+}
+
+function renderRoleCards(
+  onSelectRole: (role: RoleKey) => void,
+) {
+  return roleOrder.map((roleKey) => {
+    const role = roles[roleKey]
+
+    return (
+      <RoleCard
+        key={roleKey}
+        title={role.label}
+        description={role.description}
+        icon={role.icon}
+        accentColor={role.accentColor}
+        onClick={() => onSelectRole(roleKey)}
+      />
+    )
+  })
+}
 
 export default function Home() {
   const [selectedRole, setSelectedRole] = useState<Role>(null)
   const [view, setView] = useState<View>("select")
 
-  const handleSelectRole = (role: Role) => {
+  const handleSelectRole = (role: RoleKey) => {
     setSelectedRole(role)
     setView("login")
   }
 
   const handleBack = () => {
-    setView("select")
     setSelectedRole(null)
+    setView("select")
   }
 
   const handleLogin = () => {
@@ -72,8 +96,8 @@ export default function Home() {
   }
 
   const handleLogout = () => {
-    setView("select")
     setSelectedRole(null)
+    setView("select")
   }
 
   if (view === "dashboard" && selectedRole) {
@@ -89,7 +113,7 @@ export default function Home() {
       </div>
 
       <div className="relative z-10 flex w-full max-w-4xl flex-col items-center">
-        {view === "select" && (
+        {view === "select" ? (
           <div className="flex w-full flex-col items-center gap-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex flex-col items-center gap-4 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15">
@@ -106,25 +130,12 @@ export default function Home() {
             </div>
 
             <div className="grid w-full max-w-3xl gap-5 sm:grid-cols-3">
-              {roleOrder.map((roleKey) => {
-                const role = roles[roleKey]
-
-                return (
-                  <RoleCard
-                    key={roleKey}
-                    title={role.label}
-                    description={role.description}
-                    icon={role.icon}
-                    accentColor={role.accentColor}
-                    onClick={() => handleSelectRole(roleKey)}
-                  />
-                )
-              })}
+              {renderRoleCards(handleSelectRole)}
             </div>
           </div>
-        )}
+        ) : null}
 
-        {view === "login" && selectedRole && (
+        {view === "login" && selectedRole ? (
           <LoginForm
             role={selectedRole}
             roleLabel={roles[selectedRole].label}
@@ -133,7 +144,7 @@ export default function Home() {
             onBack={handleBack}
             onLogin={handleLogin}
           />
-        )}
+        ) : null}
       </div>
     </main>
   )

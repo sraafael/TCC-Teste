@@ -4,24 +4,23 @@ import { useState, type ReactNode } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools"
 
+const QUERY_STALE_TIME_MS = 5 * 60 * 1000
+
+const createQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: QUERY_STALE_TIME_MS,
+      },
+    },
+  })
+
 export function QueryProvider({ children }: { children: ReactNode }) {
-  // TODO: REFACTOR - Cache policy is hard-coded at the provider level, so each screen cannot independently define freshness rules.
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            // Define um staleTime padrao para evitar refetches desnecessarios.
-            staleTime: 1000 * 60 * 5, // 5 minutos
-          },
-        },
-      }),
-  )
+  const [queryClient] = useState(createQueryClient)
 
   return (
     <QueryClientProvider client={queryClient}>
       {children}
-      {/* Devtools apenas em desenvolvimento para auxiliar debugging */}
       {process.env.NODE_ENV === "development" && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   )

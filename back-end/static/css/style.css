@@ -1,9 +1,4 @@
-/*
- * Arquivo: back-end/static/css/style.css
- * Area: Back-end Flask
- * Funcao: Estilos CSS base das paginas HTML servidas pelo back-end.
- * Onde fica: /back-end/static/css/style.css
- */
+/* Navigation */
 .navbar {
     background-color: #333;
     overflow: hidden;
@@ -29,7 +24,7 @@
     border-radius: 5px;
     padding: 20px;
     margin: 10px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
 .button {
@@ -53,7 +48,9 @@ form {
     margin: 20px 0;
 }
 
-form input[type=text], form input[type=password], form textarea {
+form input[type="text"],
+form input[type="password"],
+form textarea {
     width: 100%;
     padding: 10px;
     margin: 10px 0;
@@ -66,7 +63,9 @@ table {
     border-collapse: collapse;
 }
 
-table, th, td {
+table,
+th,
+td {
     border: 1px solid #ddd;
 }
 
@@ -75,13 +74,13 @@ th, td {
     text-align: left;
 }
 
-/* TODO: REFACTOR - O layout do dashboard está definido por classes globais rígidas, dificultando adaptação a diferentes telas e componentes. */
+/* Layout */
 .dashboard {
     display: flex;
     flex-wrap: wrap;
 }
 
-/* TODO: REFACTOR - Os estados de alerta são tratados como variações visuais isoladas, o que pode gerar inconsistência de comportamento entre páginas. */
+/* Feedback */
 .alert {
     padding: 20px;
     margin-bottom: 15px;
@@ -113,7 +112,8 @@ th, td {
 }
 
 @media (max-width: 600px) {
-    .navbar a, .button {
+    .navbar a,
+    .button {
         float: none;
         display: block;
         text-align: left;

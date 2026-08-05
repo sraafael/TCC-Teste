@@ -8,6 +8,7 @@ from extensions import db
 from validators import validate_request
 from schemas import EntryCreate, PaymentCreate, PayrollUpdate
 from sqlalchemy import func, case
+from ._helpers import get_pagination_arguments, get_request_payload, serialize_pagination
 
 finance_bp = Blueprint('finance', __name__)
 
@@ -20,9 +21,8 @@ def finance_receipts():
 
 @finance_bp.route('/api/payments/webhook', methods=['POST'])
 def payments_webhook():
-    // TODO: REFACTOR - O webhook recebe payloads heterogêneos e os encaminha diretamente, o que torna a entrada dependente de um contrato implícito.
     # Webhook payloads are provider-specific; do not enforce strict schema here
-    payload = request.get_json(silent=True) or {}
+    payload = get_request_payload()
     response_body, status_code = utils.upsert_recebimento_aluno(payload)
     return jsonify(response_body), status_code
 
@@ -32,12 +32,7 @@ def finance_payroll():
     utils.ensure_monthly_payroll()
     current_reference = datetime.now().strftime('%Y-%m')
     # pagination
-    try:
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('limit', 20))
-    except Exception:
-        page = 1
-        per_page = 20
+    page, per_page = get_pagination_arguments()
 
     base_query = FolhaPagamentoProfessor.query.filter_by(referencia=current_reference).order_by(FolhaPagamentoProfessor.professor_nome.asc())
 
@@ -57,7 +52,7 @@ def finance_payroll():
             'reference': current_reference,
             'default_due_date': utils.format_date_br(utils.get_fifth_business_day(datetime.now().year, datetime.now().month)),
             'items': items,
-            'meta': {'total': pagination.total, 'pages': pagination.pages, 'page': pagination.page, 'per_page': pagination.per_page},
+            'meta': serialize_pagination(pagination),
             'summary': {
                 'totalBase': total_base,
                 'totalBaseLabel': utils.format_currency_brl(total_base),
@@ -75,8 +70,7 @@ def adjust_finance_payroll(payroll_id):
     payroll = FolhaPagamentoProfessor.query.get(payroll_id)
     if not payroll:
         return jsonify({'error': 'Lancamento de folha nao encontrado.'}), 404
-    from flask import g
-    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or request.form.to_dict() or {}
+    payload = get_request_payload(use_validated_data=True)
     response_body, status_code = utils.update_payroll_entry(payroll, payload)
     return jsonify(response_body), status_code
 
@@ -84,8 +78,7 @@ def adjust_finance_payroll(payroll_id):
 @finance_bp.route('/api/finance/entries', methods=['POST'])
 @validate_request(EntryCreate, methods=('POST',))
 def criar_entrada_financeira():
-    from flask import g
-    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or request.form.to_dict() or {}
+    payload = get_request_payload(use_validated_data=True)
 
     description = payload.get('description', '').strip()
     category = payload.get('category', '').strip()
@@ -120,9 +113,7 @@ def criar_entrada_financeira():
 @finance_bp.route('/api/finance/payments', methods=['POST'])
 @validate_request(PaymentCreate, methods=('POST',))
 def registrar_pagamento():
-    // TODO: REFACTOR - O registro de pagamento concentra normalização, validação, criação de recebimento e atualização de aluno em uma única rotina.
-    from flask import g
-    payload = getattr(g, 'validated_data', None) or request.get_json(silent=True) or {}
+    payload = get_request_payload(use_validated_data=True)
 
     student_cpf = utils.normalize_cpf(payload.get('studentCpf', ''))
     student_name = re.sub(r'\s+', ' ', str(payload.get('studentName', '')).strip()) if payload.get('studentName') else ''

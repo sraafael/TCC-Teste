@@ -44,10 +44,7 @@ export interface WorkoutPlan {
   description: string
   days: WorkoutDay[]
 }
-
-// TODO: REFACTOR - O banco local de exercícios funciona como fonte única de verdade e de montagem de planos, concentrando regra de negócio e dados em um mesmo ponto.
-// Banco local de exercicios por grupo muscular/categoria.
-// Este objeto alimenta filtros, montagem de treino e planos prontos.
+// TODO: REFACTOR - Move to database o professor pode fazer alteracoes nos treinos e salvar no banco de dados, e o aluno pode ver os treinos do professor, mas nao pode alterar.
 const exerciseDatabase: Record<ExerciseCategory, Exercise[]> = {
   peito: [
     { id: "supino-reto", name: "Supino Reto", category: "peito", sets: "4", reps: "12", animationType: "bench-press" },
@@ -116,7 +113,6 @@ const exerciseDatabase: Record<ExerciseCategory, Exercise[]> = {
   ],
 }
 
-// TODO: REFACTOR - Os planos são definidos diretamente com referências a exercícios específicos, o que torna os dados rígidos e acoplados à estrutura atual do banco.
 export const workoutPlans: WorkoutPlan[] = [
   {
     id: "hipertrofia-abc",
@@ -340,41 +336,40 @@ export const workoutPlans: WorkoutPlan[] = [
   },
 ]
 
-// TODO: REFACTOR - Os helpers de consulta assumem uma estrutura fixa do banco local, limitando a evolução para outras fontes de dados.
-// Retorna todos os exercicios de uma categoria especifica.
+const CATEGORY_LABELS: Record<ExerciseCategory, string> = {
+  peito: "Peito",
+  costas: "Costas",
+  pernas: "Pernas",
+  ombros: "Ombros",
+  biceps: "Biceps",
+  triceps: "Triceps",
+  abdomen: "Abdomen",
+  gluteos: "Gluteos",
+  cardio: "Cardio",
+}
+
+const GOAL_LABELS: Record<GoalType, string> = {
+  hipertrofia: "Hipertrofia",
+  emagrecimento: "Emagrecimento",
+  condicionamento: "Condicionamento",
+  funcional: "Funcional",
+  forca: "Forca",
+}
+
+const allExercises = Object.values(exerciseDatabase).flat()
+
 export function getExercisesByCategory(category: ExerciseCategory): Exercise[] {
   return exerciseDatabase[category]
 }
 
-// Retorna uma lista unica com todos os exercicios cadastrados.
 export function getAllExercises(): Exercise[] {
-  return Object.values(exerciseDatabase).flat()
+  return [...allExercises]
 }
 
-// Converte id tecnico de categoria para label amigavel de exibicao.
 export function getCategoryLabel(category: ExerciseCategory): string {
-  const labels: Record<ExerciseCategory, string> = {
-    peito: "Peito",
-    costas: "Costas",
-    pernas: "Pernas",
-    ombros: "Ombros",
-    biceps: "Biceps",
-    triceps: "Triceps",
-    abdomen: "Abdomen",
-    gluteos: "Gluteos",
-    cardio: "Cardio",
-  }
-  return labels[category]
+  return CATEGORY_LABELS[category]
 }
 
-// Converte objetivo tecnico do plano para texto exibido ao usuario.
 export function getGoalLabel(goal: GoalType): string {
-  const labels: Record<GoalType, string> = {
-    hipertrofia: "Hipertrofia",
-    emagrecimento: "Emagrecimento",
-    condicionamento: "Condicionamento",
-    funcional: "Funcional",
-    forca: "Forca",
-  }
-  return labels[goal]
+  return GOAL_LABELS[goal]
 }

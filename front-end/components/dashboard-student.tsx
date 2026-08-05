@@ -4,6 +4,8 @@
  * Funcao: Dashboard do aluno com treino diario, progresso corporal e pagamentos.
  * Onde fica: /front-end/components/dashboard-student.tsx
  */
+
+// refatorar colocar tudo no back-end e quando o aluno fizer o login pela primeira vez, deve aparecer para ele atualizar a senha, e quando ele trocar a senha, deve ser salva no back-end e nao no front-end
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
@@ -53,12 +55,19 @@ interface WorkoutExercise {
   animationType: string
 }
 
+const REST_DURATION_SECONDS = 90
+const PIX_KEY = "studiobiofitness@pix.com.br"
+
+const formatTimer = (seconds: number) => {
+  const minutes = Math.floor(seconds / 60)
+  return `${minutes}:${String(seconds % 60).padStart(2, "0")}`
+}
+
 // Rest timer component
 function RestTimer({ onClose }: { onClose: () => void }) {
   // Timer de descanso entre series (inicia em 90s e pode pausar/reiniciar).
-  const [seconds, setSeconds] = useState(90)
+  const [seconds, setSeconds] = useState(REST_DURATION_SECONDS)
   const [isRunning, setIsRunning] = useState(true)
-  const [initialTime] = useState(90)
 
   useEffect(() => {
     // Atualiza contador a cada 1 segundo enquanto ativo.
@@ -75,11 +84,11 @@ function RestTimer({ onClose }: { onClose: () => void }) {
     return () => clearInterval(interval)
   }, [isRunning, seconds])
 
-  const progressPercent = (seconds / initialTime) * 100
-  const minutes = Math.floor(seconds / 60)
-  const secs = seconds % 60
+  const progressPercent = (seconds / REST_DURATION_SECONDS) * 100
 
   return (
+    // Refatoração tirar toda essa parte da  e colocar no back-end, mas por enquanto é mock para visualizacao de turmas e alunos.
+
     // Painel visual do contador com progresso circular.
     <div className="flex flex-col items-center gap-4 rounded-xl border border-primary/30 bg-primary/5 p-5">
       <div className="flex items-center gap-2 text-sm font-medium text-primary">
@@ -100,14 +109,14 @@ function RestTimer({ onClose }: { onClose: () => void }) {
           />
         </svg>
         <span className="text-3xl font-semibold font-mono text-foreground">
-          {minutes}:{secs.toString().padStart(2, "0")}
+          {formatTimer(seconds)}
         </span>
       </div>
       <div className="flex gap-3">
         <Button
           variant="outline"
           size="sm"
-          onClick={() => { setSeconds(90); setIsRunning(true) }}
+          onClick={() => { setSeconds(REST_DURATION_SECONDS); setIsRunning(true) }}
           className="border-border text-foreground"
         >
           Reiniciar
@@ -141,15 +150,14 @@ function RestTimer({ onClose }: { onClose: () => void }) {
 function PixModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   // Estado para feedback visual quando a chave PIX e copiada.
   const [copied, setCopied] = useState(false)
-  const pixKey = "studiobiofitness@pix.com.br"
 
   const handleCopy = useCallback(() => {
     // Copia chave para area de transferencia e mostra confirmacao temporaria.
-    navigator.clipboard.writeText(pixKey).then(() => {
+    navigator.clipboard.writeText(PIX_KEY).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2500)
     })
-  }, [pixKey])
+  }, [])
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -173,7 +181,7 @@ function PixModal({ open, onClose }: { open: boolean; onClose: () => void }) {
             <p className="mb-2 text-xs text-muted-foreground">Chave PIX (e-mail)</p>
             <div className="flex items-center gap-2">
               <code className="flex-1 truncate rounded bg-background px-3 py-2 text-sm font-mono text-foreground">
-                {pixKey}
+                {PIX_KEY}
               </code>
               <Button
                 size="sm"
@@ -201,7 +209,7 @@ function PixModal({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 export function DashboardStudent({ onLogout }: DashboardStudentProps) {
   // TODO: REFACTOR - The workout plan is embedded as local mock state, so progress, completion, and rest rules are coupled to the UI screen.
-  const [workoutDays] = useState([
+  const [workoutDays] = useState(() => [
     {
       label: "Treino A",
       muscleGroups: "Peito e Triceps",
@@ -248,8 +256,8 @@ export function DashboardStudent({ onLogout }: DashboardStudentProps) {
   const [showPixModal, setShowPixModal] = useState(false)
 
   // Body evolution state
-  // Historico de peso para card de evolucao corporal.
-  const [bodyWeights] = useState([
+  // refatorar Historico de peso para card de evolucao corporal likar no banco de dados e renderizar grafico de evolucao corporal.
+  const [bodyWeights] = useState(() => [
     { date: "01/10/2025", weight: 82.5 },
     { date: "01/11/2025", weight: 81.0 },
     { date: "01/12/2025", weight: 79.8 },
@@ -267,17 +275,14 @@ export function DashboardStudent({ onLogout }: DashboardStudentProps) {
 
   // Marca/desmarca exercicio como concluido e controla abertura do descanso.
   const toggleComplete = (exerciseName: string) => {
-    setCompletedExercises((prev) => {
-      const next = new Set(prev)
-      if (next.has(exerciseName)) {
-        next.delete(exerciseName)
-        setShowRestTimer(false)
-      } else {
-        next.add(exerciseName)
-        setShowRestTimer(true)
-      }
-      return next
+    const wasCompleted = completedExercises.has(exerciseName)
+    setCompletedExercises((currentExercises) => {
+      const nextExercises = new Set(currentExercises)
+      if (wasCompleted) nextExercises.delete(exerciseName)
+      else nextExercises.add(exerciseName)
+      return nextExercises
     })
+    setShowRestTimer(!wasCompleted)
   }
 
   // Progresso do treino do dia atual (Treino A).
@@ -285,7 +290,7 @@ export function DashboardStudent({ onLogout }: DashboardStudentProps) {
   const doneToday = workoutDays[0].exercises.filter((e) => completedExercises.has(e.exercise)).length
   const progressPercent = Math.round((doneToday / totalExercisesToday) * 100)
 
-  // Historico de mensalidades para aba financeira.
+  //  refatorar Historico de mensalidades para aba financeira do aluno, linkar com banco de dados e renderizar grafico de mensalidades.
   const paymentHistory = [
     { month: "Fevereiro 2026", value: "R$ 149,90", status: "pago", date: "05/02/2026" },
     { month: "Janeiro 2026", value: "R$ 149,90", status: "pago", date: "05/01/2026" },
@@ -295,7 +300,7 @@ export function DashboardStudent({ onLogout }: DashboardStudentProps) {
     { month: "Setembro 2025", value: "R$ 139,90", status: "atrasado", date: "12/09/2025" },
   ]
 
-  // Informacoes de vencimento para destacar pagamento proximo na interface.
+  // refatorar Informacoes de vencimento para destacar pagamento proximo na interface do aluno e linkar com banco de dados.
   const nextPaymentDate = "05/03/2026"
   const daysUntilPayment = 9 // mock
   const paymentNear = daysUntilPayment <= 10
@@ -323,13 +328,14 @@ export function DashboardStudent({ onLogout }: DashboardStudentProps) {
       <main className="mx-auto max-w-7xl px-4 py-8 lg:px-8">
         <div className="mb-8">
           <h2 className="text-2xl font-semibold font-mono text-foreground">
-            Ola, Aluno
+            Ola, {user.name}
           </h2>
+            // rafatorar quero mais mensagem de boas vindas/ bom treino.
           <p className="mt-1 text-sm text-muted-foreground">
             Continue firme no seu treino de hoje!
           </p>
         </div>
-
+// refatorar stats row para mostrar progresso do aluno, conquistas e metas de treino, linkar com banco de dados.
         {/* Stats Row */}
         <div className="grid gap-4 sm:grid-cols-4">
           {[
@@ -413,7 +419,7 @@ export function DashboardStudent({ onLogout }: DashboardStudentProps) {
             <RestTimer onClose={() => setShowRestTimer(false)} />
           </div>
         )}
-
+// refatorar o treino do dia para mostrar os treinos A, B e C em abas separadas, linkar com banco de dados e permitir marcar exercicios como completos.
         <Tabs defaultValue="treino-a" className="mt-8">
           <TabsList className="bg-secondary">
             <TabsTrigger value="treino-a">Treino A</TabsTrigger>

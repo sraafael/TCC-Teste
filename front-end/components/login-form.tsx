@@ -20,6 +20,36 @@ interface LoginFormProps {
   onLogin: () => void
 }
 
+interface PasswordResetDelivery {
+  email?: string
+  whatsapp?: string
+  message?: string
+}
+
+interface PasswordResetResult {
+  message?: string
+}
+
+const loginSchema = z.object({
+  cpf: z.preprocess(
+    (value) => (typeof value === "string" ? normalizeCpf(value) : value),
+    z.string().length(11, "Informe um CPF válido com 11 dígitos.")
+  ),
+  password: z.string().min(1, "Informe sua senha para entrar."),
+})
+
+type LoginFormValues = z.infer<typeof loginSchema>
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback
+
+const getResetPasswordError = (cpf: string, code: string, password: string, confirmation: string) => {
+  if (!isValidCpf(cpf)) return "CPF invalido."
+  if (!/^[0-9]{6}$/.test(code)) return "Informe o codigo de 6 digitos recebido."
+  if (password.length < 6) return "A nova senha precisa ter pelo menos 6 caracteres."
+  if (password !== confirmation) return "A confirmacao da senha nao confere."
+}
+
 export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, onLogin }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -33,16 +63,9 @@ export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, on
   const [resetError, setResetError] = useState("")
   const [resetMessage, setResetMessage] = useState("")
 
-  // Schema de validação com Zod
-  const loginSchema = z.object({
-    cpf: z.preprocess((v) => (typeof v === "string" ? normalizeCpf(v) : v), z.string().length(11, "Informe um CPF válido com 11 dígitos.")),
-    password: z.string().min(1, "Informe sua senha para entrar."),
-  })
-
-  type LoginFormValues = z.infer<typeof loginSchema>
-
   const { control, register, handleSubmit, getValues, formState: { errors } } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
+    // refatorar para o back-end, deixar salvo o cpf e senha no banco de dados para adiministração, professor e aluno, por enquanto é mock para teste.
     defaultValues: { cpf: "545.142.148-09", password: "123456789" },
   })
 
@@ -72,8 +95,7 @@ export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, on
 
       onLogin()
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao realizar login."
-      setLoginError(message)
+      setLoginError(getErrorMessage(error, "Falha ao realizar login."))
     } finally {
       setIsLoading(false)
     }
@@ -93,7 +115,7 @@ export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, on
     const normalizedCpf = normalizeCpf(cpfValue)
     try {
       setIsSendingResetCode(true)
-      const response = await apiClient.post<any>("/api/auth/forgot-password", {
+      const response = await apiClient.post<PasswordResetDelivery>("/api/auth/forgot-password", {
         cpf: normalizedCpf,
         role,
       })
@@ -115,9 +137,7 @@ export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, on
           : payload?.message || "Código enviado com sucesso."
       )
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Falha ao solicitar redefinição."
-      setResetError(message)
+      setResetError(getErrorMessage(error, "Falha ao solicitar redefinição."))
     } finally {
       setIsSendingResetCode(false)
     }
@@ -129,27 +149,17 @@ export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, on
     setResetMessage("")
 
     const cpfValue = getValues("cpf")
-    const normalizedCpf = normalizeCpf(cpfValue)
-    if (normalizedCpf.length !== 11) {
-      setResetError("CPF invalido.")
-      return
-    }
-    if (!/^[0-9]{6}$/.test(resetCode)) {
-      setResetError("Informe o codigo de 6 digitos recebido.")
-      return
-    }
-    if (newPassword.length < 6) {
-      setResetError("A nova senha precisa ter pelo menos 6 caracteres.")
-      return
-    }
-    if (newPassword !== confirmNewPassword) {
-      setResetError("A confirmacao da senha nao confere.")
+    const validationError = getResetPasswordError(cpfValue, resetCode, newPassword, confirmNewPassword)
+    if (validationError) {
+      setResetError(validationError)
       return
     }
 
+    const normalizedCpf = normalizeCpf(cpfValue)
+
     try {
       setIsResettingPassword(true)
-      const response = await apiClient.post<any>("/api/auth/reset-password", {
+      const response = await apiClient.post<PasswordResetResult>("/api/auth/reset-password", {
         cpf: normalizedCpf,
         role,
         code: resetCode,
@@ -164,8 +174,7 @@ export function LoginForm({ role, roleLabel, icon: Icon, accentColor, onBack, on
       // preenche o campo de senha com a nova senha (UX)
       // atualiza o campo do form diretamente se necessário
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Falha ao redefinir senha."
-      setResetError(message)
+      setResetError(getErrorMessage(error, "Falha ao redefinir senha."))
     } finally {
       setIsResettingPassword(false)
     }

@@ -6,17 +6,20 @@ from models import AlunoCadastro, ProfessorCadastro, PlanoAcademia, Aluno
 dashboard_bp = Blueprint('dashboard', __name__)
 
 
+def fallback_count(primary_model, fallback_model=None):
+    primary_count = primary_model.query.count()
+    if primary_count or fallback_model is None:
+        return primary_count
+    return fallback_model.query.count()
+
+
 @dashboard_bp.route('/api/stats', methods=['GET'])
 def get_stats():
-    // TODO: REFACTOR - O endpoint de estatísticas usa fallback implícito entre modelos diferentes, o que esconde uma regra de negócio importante.
-    total_alunos_cadastro = AlunoCadastro.query.count()
-    total_professores_cadastro = ProfessorCadastro.query.count()
-    total_planos_academia = PlanoAcademia.query.count()
     return jsonify(
         {
-            'total_alunos': total_alunos_cadastro if total_alunos_cadastro > 0 else Aluno.query.count(),
-            'total_planos': total_planos_academia if total_planos_academia > 0 else 0,
-            'total_professores': total_professores_cadastro,
+            'total_alunos': fallback_count(AlunoCadastro, Aluno),
+            'total_planos': fallback_count(PlanoAcademia),
+            'total_professores': fallback_count(ProfessorCadastro),
             'vencimentos': 5,
             'receita_mensal': 1250.00,
         }

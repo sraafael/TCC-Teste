@@ -7,8 +7,17 @@ except Exception:
     ValidationError = None
 
 
+def get_request_data():
+    return request.get_json(silent=True) or request.form.to_dict() or {}
+
+
+def validation_error_response(error):
+    if ValidationError and isinstance(error, ValidationError):
+        return jsonify({'errors': error.errors()}), 400
+    return jsonify({'error': 'Invalid request payload.'}), 400
+
+
 def validate_request(schema_model, methods=('POST', 'PUT'), partial=False):
-    # TODO: REFACTOR - O decorator centraliza validação, parsing e resposta HTTP, misturando política de entrada com transporte.
     """Decorator to validate incoming JSON/form payloads using a Pydantic schema.
 
     - `schema_model`: Pydantic BaseModel class
@@ -19,27 +28,17 @@ def validate_request(schema_model, methods=('POST', 'PUT'), partial=False):
     def decorator(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
-            # Only validate for specified methods
             if request.method not in methods:
                 return fn(*args, **kwargs)
 
-            data = request.get_json(silent=True)
-            if data is None:
-                data = request.form.to_dict() or {}
+            data = get_request_data()
 
             try:
-                # For partial updates, accept missing fields (pydantic will still validate provided ones)
                 validated = schema_model(**data)
-                # Store validated dict on flask.g for handlers to consume
                 g.validated_data = validated.dict(exclude_unset=partial)
             except Exception as exc:
-                # If pydantic is available and the error is a ValidationError, return details
-                if ValidationError and isinstance(exc, ValidationError):
-                    return jsonify({'errors': exc.errors()}), 400
-
-                # Unexpected error during validation
                 current_app.logger.exception('Validation failure: %s', exc)
-                return jsonify({'error': 'Invalid request payload.'}), 400
+                return validation_error_response(exc)
 
             return fn(*args, **kwargs)
 

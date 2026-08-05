@@ -17,19 +17,23 @@ interface RoleCardProps {
   onClick: () => void
 }
 
+const cardClassName = cn(
+  "group relative flex w-full cursor-pointer flex-col items-center gap-5 rounded-2xl border border-border bg-card p-8 text-card-foreground",
+  "transition-all duration-300 ease-out",
+  "hover:scale-[1.03] hover:border-primary/50 hover:shadow-[0_0_40px_rgba(74,222,128,0.1)]",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+)
+
+const accessLabelClassName = cn(
+  "mt-2 flex translate-y-2 items-center gap-2 text-sm font-medium text-primary opacity-0 transition-all duration-300",
+  "group-hover:translate-y-0 group-hover:opacity-100"
+)
+
 export function RoleCard({ title, description, icon: Icon, accentColor, onClick }: RoleCardProps) {
-  // TODO: REFACTOR - The card is acting as both navigation trigger and visual container, so role selection logic is coupled to presentation.
   return (
-    // Card clicavel que representa um perfil de acesso na pagina inicial.
     <button
       onClick={onClick}
-      className={cn(
-        "group relative flex flex-col items-center gap-5 rounded-2xl border border-border bg-card p-8 text-card-foreground",
-        "transition-all duration-300 ease-out",
-        "hover:scale-[1.03] hover:border-primary/50 hover:shadow-[0_0_40px_rgba(74,222,128,0.1)]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        "cursor-pointer w-full"
-      )}
+      className={cardClassName}
     >
       <div
         className={cn(
@@ -51,10 +55,7 @@ export function RoleCard({ title, description, icon: Icon, accentColor, onClick 
       </div>
 
       <div
-        className={cn(
-          "mt-2 flex items-center gap-2 text-sm font-medium transition-all duration-300",
-          "text-primary opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0"
-        )}
+        className={accessLabelClassName}
       >
         <span>Acessar</span>
         <svg

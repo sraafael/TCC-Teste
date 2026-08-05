@@ -2,9 +2,40 @@ from pydantic import BaseModel, Field, validator, EmailStr, root_validator
 from typing import Optional, List
 import re
 
+CPF_LENGTH = 11
+PHONE_LENGTHS = (10, 11)
+ALIAS_FIELDS = {
+    'nome': 'name',
+    'preco': 'price',
+    'duracao': 'duration',
+    'modalidades': 'modalities',
+    'beneficios': 'benefits',
+    'ativo': 'active',
+}
+
+
+def normalize_cpf(value):
+    digits = re.sub(r'\D', '', str(value or ''))
+    if len(digits) != CPF_LENGTH:
+        raise ValueError('CPF invalido')
+    return digits
+
+
+def normalize_phone(value):
+    digits = re.sub(r'\D', '', str(value or ''))
+    if len(digits) not in PHONE_LENGTHS:
+        raise ValueError('Telefone invalido')
+    return digits
+
+
+def map_aliases(values, aliases):
+    for source, target in aliases.items():
+        if source in values and target not in values:
+            values[target] = values.pop(source)
+    return values
+
 
 class AlunoCreate(BaseModel):
-    # TODO: REFACTOR - O schema de criação de aluno valida campos de domínio e formato de telefone/CPF de forma muito próxima ao endpoint.
     nome: str = Field(..., min_length=3, max_length=100)
     cpf: str
     telefone: str
@@ -15,17 +46,11 @@ class AlunoCreate(BaseModel):
 
     @validator('cpf', pre=True)
     def cpf_digits(cls, v):
-        digits = re.sub(r'\D', '', str(v or ''))
-        if len(digits) != 11:
-            raise ValueError('CPF invalido')
-        return digits
+        return normalize_cpf(v)
 
     @validator('telefone', pre=True)
     def telefone_digits(cls, v):
-        digits = re.sub(r'\D', '', str(v or ''))
-        if len(digits) not in (10, 11):
-            raise ValueError('Telefone invalido')
-        return digits
+        return normalize_phone(v)
 
 
 class AlunoUpdate(BaseModel):
@@ -66,17 +91,11 @@ class ProfessorCreate(BaseModel):
 
     @validator('cpf', pre=True)
     def cpf_digits(cls, v):
-        digits = re.sub(r'\D', '', str(v or ''))
-        if len(digits) != 11:
-            raise ValueError('CPF invalido')
-        return digits
+        return normalize_cpf(v)
 
     @validator('telefone', pre=True)
     def telefone_digits(cls, v):
-        digits = re.sub(r'\D', '', str(v or ''))
-        if len(digits) not in (10, 11):
-            raise ValueError('Telefone invalido')
-        return digits
+        return normalize_phone(v)
 
     @validator('horario')
     def horario_format(cls, v):
@@ -104,7 +123,6 @@ class ProfessorUpdate(BaseModel):
 
 
 class PlanoBase(BaseModel):
-    # TODO: REFACTOR - O schema de plano usa aliases diferentes de nomes de campo, o que aumenta o risco de inconsistência entre entrada e lógica interna.
     name: str = Field(..., min_length=3, max_length=100)
     price: float = Field(..., gt=0)
     duration: str = Field(..., min_length=1)
@@ -114,19 +132,7 @@ class PlanoBase(BaseModel):
 
     @root_validator(pre=True)
     def map_aliases(cls, values):
-        if 'nome' in values and 'name' not in values:
-            values['name'] = values.pop('nome')
-        if 'preco' in values and 'price' not in values:
-            values['price'] = values.pop('preco')
-        if 'duracao' in values and 'duration' not in values:
-            values['duration'] = values.pop('duracao')
-        if 'modalidades' in values and 'modalities' not in values:
-            values['modalities'] = values.pop('modalidades')
-        if 'beneficios' in values and 'benefits' not in values:
-            values['benefits'] = values.pop('beneficios')
-        if 'ativo' in values and 'active' not in values:
-            values['active'] = values.pop('ativo')
-        return values
+        return map_aliases(values, ALIAS_FIELDS)
 
 
 class PlanoCreate(PlanoBase):
@@ -143,23 +149,10 @@ class PlanoUpdate(BaseModel):
 
     @root_validator(pre=True)
     def map_aliases_update(cls, values):
-        if 'nome' in values and 'name' not in values:
-            values['name'] = values.pop('nome')
-        if 'preco' in values and 'price' not in values:
-            values['price'] = values.pop('preco')
-        if 'duracao' in values and 'duration' not in values:
-            values['duration'] = values.pop('duracao')
-        if 'modalidades' in values and 'modalities' not in values:
-            values['modalities'] = values.pop('modalidades')
-        if 'beneficios' in values and 'benefits' not in values:
-            values['benefits'] = values.pop('beneficios')
-        if 'ativo' in values and 'active' not in values:
-            values['active'] = values.pop('ativo')
-        return values
+        return map_aliases(values, ALIAS_FIELDS)
 
 
 class TurmaCreate(BaseModel):
-    # TODO: REFACTOR - O schema de turma valida horário e capacidade, mas depende de convenções de nomes muito específicas do frontend legado.
     event: str = Field(..., min_length=3, max_length=100)
     time: str
     room: str = Field(..., min_length=1, max_length=50)
@@ -202,7 +195,6 @@ class TurmaUpdate(BaseModel):
 
 
 class PaymentCreate(BaseModel):
-    # TODO: REFACTOR - O schema de pagamento mistura dados do aluno, método e referência, tornando a entrada mais frágil.
     studentCpf: str
     studentName: str
     amount: float = Field(..., gt=0)
@@ -213,10 +205,7 @@ class PaymentCreate(BaseModel):
 
     @validator('studentCpf', pre=True)
     def cpf_digits(cls, v):
-        digits = re.sub(r'\D', '', str(v or ''))
-        if len(digits) != 11:
-            raise ValueError('CPF invalido')
-        return digits
+        return normalize_cpf(v)
 
     @validator('paymentMethod')
     def method_allowed(cls, v):
@@ -248,10 +237,7 @@ class ReallocateStudent(BaseModel):
 
     @validator('studentCpf', pre=True)
     def cpf_digits(cls, v):
-        digits = re.sub(r'\D', '', str(v or ''))
-        if len(digits) != 11:
-            raise ValueError('CPF invalido')
-        return digits
+        return normalize_cpf(v)
 
 
 class PayrollUpdate(BaseModel):
@@ -289,10 +275,7 @@ class ForgotPasswordSchema(BaseModel):
 
     @validator('cpf', pre=True)
     def cpf_digits(cls, v):
-        digits = re.sub(r'\D', '', str(v or ''))
-        if len(digits) != 11:
-            raise ValueError('CPF invalido')
-        return digits
+        return normalize_cpf(v)
 
 
 class LoginSchema(BaseModel):
@@ -302,10 +285,7 @@ class LoginSchema(BaseModel):
 
     @validator('cpf', pre=True)
     def cpf_digits(cls, v):
-        digits = re.sub(r'\D', '', str(v or ''))
-        if len(digits) != 11:
-            raise ValueError('CPF invalido')
-        return digits
+        return normalize_cpf(v)
 
 
 class ResetPasswordSchema(BaseModel):
@@ -316,10 +296,7 @@ class ResetPasswordSchema(BaseModel):
 
     @validator('cpf', pre=True)
     def cpf_digits(cls, v):
-        digits = re.sub(r'\D', '', str(v or ''))
-        if len(digits) != 11:
-            raise ValueError('CPF invalido')
-        return digits
+        return normalize_cpf(v)
 
     @validator('code')
     def code_len(cls, v):
@@ -335,7 +312,6 @@ class ResetPasswordSchema(BaseModel):
 
 
 class ProfessorVacation(BaseModel):
-    # TODO: REFACTOR - O schema de férias define uma ação de negócio limitada a uma lista fixa, o que pode ficar rígido com o tempo.
     action: str
     startDate: str
     endDate: str

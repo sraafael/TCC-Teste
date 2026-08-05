@@ -19,45 +19,62 @@ interface AddStudentDialogProps {
 
 const addStudentSchema = z.object({
   name: z.string().min(1, "Informe o nome do aluno."),
-  cpf: z.preprocess((v) => (typeof v === "string" ? normalizeCpf(v) : v), z.string().length(11, "Informe um CPF válido com 11 dígitos.")),
+  cpf: z.preprocess(
+    (value) => (typeof value === "string" ? normalizeCpf(value) : value),
+    z.string().length(11, "Informe um CPF válido com 11 dígitos."),
+  ),
   email: z.string().email("Informe um email válido."),
   phone: z.string().optional(),
-  age: z.string().optional().refine((v) => v === undefined || v === "" || /^\d+$/.test(v), "Idade inválida"),
-  weight: z.string().optional().refine((v) => v === undefined || v === "" || /^\d+(\.\d+)?$/.test(v), "Peso inválido"),
+  age: z
+    .string()
+    .optional()
+    .refine((value) => value === undefined || value === "" || /^\d+$/.test(value), "Idade inválida"),
+  weight: z
+    .string()
+    .optional()
+    .refine((value) => value === undefined || value === "" || /^\d+(\.\d+)?$/.test(value), "Peso inválido"),
   plan: z.string().min(1, "Selecione um plano"),
 })
 
 type AddStudentForm = z.infer<typeof addStudentSchema>
+
+const defaultValues: AddStudentForm = {
+  name: "",
+  cpf: "",
+  email: "",
+  phone: "",
+  age: "",
+  weight: "",
+  plan: "",
+}
+
+function buildStudentPayload(values: AddStudentForm) {
+  return {
+    nome: values.name,
+    cpf: typeof values.cpf === "string" ? normalizeCpf(values.cpf) : values.cpf,
+    email: values.email,
+    telefone: values.phone,
+    idade: values.age,
+    peso: values.weight,
+    plano: values.plan,
+  }
+}
+
+function renderFieldError(message?: string) {
+  if (!message) return null
+  return <p className="text-sm text-red-500">{message}</p>
+}
 
 export function AddStudentDialog({ onSuccess, onCancel }: AddStudentDialogProps) {
   const { mutate, loading, error, success } = useMutation()
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<AddStudentForm>({
     resolver: zodResolver(addStudentSchema),
-    defaultValues: {
-      name: "",
-      cpf: "",
-      email: "",
-      phone: "",
-      age: "",
-      weight: "",
-      plan: "",
-    },
+    defaultValues,
   })
 
   const onSubmit = useCallback(async (values: AddStudentForm) => {
-    // TODO: REFACTOR - The dialog is translating form values into backend field names directly, so the API contract is embedded in the UI layer.
-    const payload = {
-      nome: values.name,
-      cpf: typeof values.cpf === "string" ? normalizeCpf(values.cpf) : values.cpf,
-      email: values.email,
-      telefone: values.phone,
-      idade: values.age,
-      peso: values.weight,
-      plano: values.plan,
-    }
-
-    const result = await mutate("/api/cadastros/alunos", payload)
+    const result = await mutate("/api/cadastros/alunos", buildStudentPayload(values))
     if (result) {
       reset()
       onSuccess?.()
@@ -75,78 +92,45 @@ export function AddStudentDialog({ onSuccess, onCancel }: AddStudentDialogProps)
       {success && (
         <div className="flex items-center gap-2 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900/50 p-3">
           <AlertCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-          <p className="text-sm text-green-700 dark:text-green-300">
-            Aluno adicionado com sucesso!
-          </p>
+          <p className="text-sm text-green-700 dark:text-green-300">Aluno adicionado com sucesso!</p>
         </div>
       )}
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="name">Nome</Label>
-        <Input
-          id="name"
-          {...register("name")}
-          placeholder="Nome do aluno"
-          required
-        />
-        {errors.name && <p className="text-sm text-red-500">{String(errors.name.message)}</p>}
+        <Input id="name" {...register("name")} placeholder="Nome do aluno" required />
+        {renderFieldError(errors.name?.message)}
       </div>
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="cpf">CPF</Label>
-        <Input
-          id="cpf"
-          {...register("cpf")}
-          placeholder="123.456.789-00"
-          required
-        />
-        {errors.cpf && <p className="text-sm text-red-500">{String(errors.cpf.message)}</p>}
+        <Input id="cpf" {...register("cpf")} placeholder="123.456.789-00" required />
+        {renderFieldError(errors.cpf?.message)}
       </div>
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">Email</Label>
-        <Input
-          id="email"
-          type="email"
-          {...register("email")}
-          placeholder="email@example.com"
-          required
-        />
-        {errors.email && <p className="text-sm text-red-500">{String(errors.email.message)}</p>}
+        <Input id="email" type="email" {...register("email")} placeholder="email@example.com" required />
+        {renderFieldError(errors.email?.message)}
       </div>
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="phone">Telefone</Label>
-        <Input
-          id="phone"
-          {...register("phone")}
-          placeholder="(11) 99999-9999"
-        />
-        {errors.phone && <p className="text-sm text-red-500">{String(errors.phone.message)}</p>}
+        <Input id="phone" {...register("phone")} placeholder="(11) 99999-9999" />
+        {renderFieldError(errors.phone?.message)}
       </div>
 
       <div className="flex gap-4">
         <div className="flex-1 flex flex-col gap-2">
           <Label htmlFor="age">Idade</Label>
-          <Input
-            id="age"
-            type="number"
-            {...register("age")}
-            placeholder="25"
-          />
-          {errors.age && <p className="text-sm text-red-500">{String(errors.age.message)}</p>}
+          <Input id="age" type="number" {...register("age")} placeholder="25" />
+          {renderFieldError(errors.age?.message)}
         </div>
 
         <div className="flex-1 flex flex-col gap-2">
           <Label htmlFor="weight">Peso (kg)</Label>
-          <Input
-            id="weight"
-            type="number"
-            step="0.1"
-            {...register("weight")}
-            placeholder="80.5"
-          />
-          {errors.weight && <p className="text-sm text-red-500">{String(errors.weight.message)}</p>}
+          <Input id="weight" type="number" step="0.1" {...register("weight")} placeholder="80.5" />
+          {renderFieldError(errors.weight?.message)}
         </div>
       </div>
 
@@ -164,15 +148,11 @@ export function AddStudentDialog({ onSuccess, onCancel }: AddStudentDialogProps)
           <option value="Plano VIP">Plano VIP</option>
           <option value="Plano Trimestral">Plano Trimestral</option>
         </select>
-        {errors.plan && <p className="text-sm text-red-500">{String(errors.plan.message)}</p>}
+        {renderFieldError(errors.plan?.message)}
       </div>
 
       <div className="flex gap-2">
-        <Button
-          type="submit"
-          className="flex-1"
-          disabled={loading}
-        >
+        <Button type="submit" className="flex-1" disabled={loading}>
           Adicionar Aluno
         </Button>
         <Button type="button" variant="outline" onClick={onCancel}>

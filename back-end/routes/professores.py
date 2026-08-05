@@ -7,6 +7,7 @@ from extensions import db
 from validators import validate_request
 from schemas import ProfessorCreate, ProfessorUpdate, ProfessorVacation
 from sqlalchemy import or_
+from ._helpers import get_pagination_arguments, get_request_payload, serialize_pagination
 
 professores_bp = Blueprint('professores', __name__)
 
@@ -14,17 +15,11 @@ professores_bp = Blueprint('professores', __name__)
 @professores_bp.route('/api/cadastros/professores', methods=['GET', 'POST'])
 @validate_request(ProfessorCreate, methods=('POST',))
 def cadastros_professores():
-    // TODO: REFACTOR - A rota de professores junta leitura, criação e diferentes filtros em um único ponto de entrada.
     if request.method == 'GET':
         # Query params: page, limit, q (search), status
         q = (request.args.get('q') or '').strip()
         status = request.args.get('status')
-        try:
-            page = int(request.args.get('page', 1))
-            per_page = int(request.args.get('limit', 20))
-        except Exception:
-            page = 1
-            per_page = 20
+        page, per_page = get_pagination_arguments()
 
         query = ProfessorCadastro.query
         if q:
@@ -35,10 +30,10 @@ def cadastros_professores():
 
         pagination = query.order_by(ProfessorCadastro.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
         items = [utils.serialize_professor_cadastro(professor) for professor in pagination.items]
-        meta = {'total': pagination.total, 'pages': pagination.pages, 'page': pagination.page, 'per_page': pagination.per_page}
+        meta = serialize_pagination(pagination)
         return jsonify({'success': True, 'data': items, 'meta': meta})
 
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    payload = get_request_payload()
     response_body, status_code = utils.persist_professor_cadastro(payload)
     return jsonify(response_body), status_code
 
@@ -51,7 +46,7 @@ def atualizar_professor(cpf):
     if not professor:
         return jsonify({'error': 'Professor nao encontrado.'}), 404
 
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    payload = get_request_payload()
     payload['cpf'] = normalized_cpf
     response_body, status_code = utils.persist_professor_cadastro(payload, existing_professor=professor)
     return jsonify(response_body), status_code
@@ -60,13 +55,12 @@ def atualizar_professor(cpf):
 @professores_bp.route('/api/cadastros/professores/<cpf>/vacation', methods=['POST'])
 @validate_request(ProfessorVacation, methods=('POST',))
 def processar_ferias_professor(cpf):
-    // TODO: REFACTOR - O fluxo de férias concentra estado do professor, validação de ação e resposta em uma mesma função.
     normalized_cpf = utils.normalize_cpf(cpf)
     professor = ProfessorCadastro.query.filter_by(cpf=normalized_cpf).first()
     if not professor:
         return jsonify({'error': 'Professor nao encontrado.'}), 404
 
-    payload = request.get_json(silent=True) or {}
+    payload = get_request_payload()
     action = payload.get('action')
     start_date = payload.get('startDate')
     end_date = payload.get('endDate')

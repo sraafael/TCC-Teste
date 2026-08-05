@@ -36,4 +36,4 @@ cd front-end
 # pnpm install
 
 # 6. Inicie o projeto
-pnpm dev
+npm run dev

@@ -8,13 +8,34 @@ interface UseApiState<T> {
 }
 
 interface UseApiActions<T> {
-  execute: (endpoint: string, method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", body?: any) => Promise<T | null>
+  execute: (endpoint: string, method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", body?: unknown) => Promise<T | null>
   reset: () => void
   setData: (data: T | null) => void
   setError: (error: string | null) => void
 }
 
-export function useApi<T = any>(initialData: T | null = null): UseApiState<T> & UseApiActions<T> {
+type HTTPMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+
+const DEFAULT_ERROR_MESSAGE = "Erro ao processar requisição"
+
+const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE
+
+const request = <T,>(endpoint: string, method: HTTPMethod, body?: unknown): Promise<ApiResponse<T>> => {
+  switch (method) {
+    case "POST":
+      return apiClient.post<T>(endpoint, body)
+    case "PUT":
+      return apiClient.put<T>(endpoint, body)
+    case "PATCH":
+      return apiClient.patch<T>(endpoint, body)
+    case "DELETE":
+      return apiClient.delete<T>(endpoint)
+    default:
+      return apiClient.get<T>(endpoint)
+  }
+}
+
+export function useApi<T = unknown>(initialData: T | null = null): UseApiState<T> & UseApiActions<T> {
   const [state, setState] = useState<UseApiState<T>>({
     data: initialData,
     loading: false,
@@ -24,38 +45,18 @@ export function useApi<T = any>(initialData: T | null = null): UseApiState<T> & 
   const execute = useCallback(
     async (
       endpoint: string,
-      method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" = "GET",
-      body?: any
+      method: HTTPMethod = "GET",
+      body?: unknown
     ): Promise<T | null> => {
-      // TODO: REFACTOR - O fluxo centraliza carregamento, erro e parsing de resposta em um único ponto, dificultando reutilização para outros contratos de API.
       setState((prev) => ({ ...prev, loading: true, error: null }))
 
       try {
-        let result: ApiResponse<T>
-
-        // TODO: REFACTOR - O hook depende diretamente do cliente HTTP e do formato de resposta do backend, acoplando a regra de negócio à implementação técnica.
-        switch (method) {
-          case "POST":
-            result = await apiClient.post<T>(endpoint, body)
-            break
-          case "PUT":
-            result = await apiClient.put<T>(endpoint, body)
-            break
-          case "PATCH":
-            result = await apiClient.patch<T>(endpoint, body)
-            break
-          case "DELETE":
-            result = await apiClient.delete<T>(endpoint)
-            break
-          case "GET":
-          default:
-            result = await apiClient.get<T>(endpoint)
-        }
+        const result = await request<T>(endpoint, method, body)
 
         if (!result.success) {
           setState((prev) => ({
             ...prev,
-            error: result.error || "Erro ao processar requisição",
+            error: result.error || DEFAULT_ERROR_MESSAGE,
             loading: false,
           }))
           return null
@@ -70,12 +71,9 @@ export function useApi<T = any>(initialData: T | null = null): UseApiState<T> & 
 
         return result.data || null
       } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Erro ao processar requisição"
-
         setState((prev) => ({
           ...prev,
-          error: errorMessage,
+          error: getErrorMessage(error),
           loading: false,
         }))
 

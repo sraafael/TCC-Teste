@@ -21,13 +21,6 @@ type ToasterToast = ToastProps & {
   action?: ToastActionElement
 }
 
-const actionTypes = {
-  ADD_TOAST: 'ADD_TOAST',
-  UPDATE_TOAST: 'UPDATE_TOAST',
-  DISMISS_TOAST: 'DISMISS_TOAST',
-  REMOVE_TOAST: 'REMOVE_TOAST',
-} as const
-
 let count = 0
 
 function genId() {
@@ -36,23 +29,21 @@ function genId() {
   return count.toString()
 }
 
-type ActionType = typeof actionTypes
-
 type Action =
   | {
-      type: ActionType['ADD_TOAST']
+      type: 'ADD_TOAST'
       toast: ToasterToast
     }
   | {
-      type: ActionType['UPDATE_TOAST']
+      type: 'UPDATE_TOAST'
       toast: Partial<ToasterToast>
     }
   | {
-      type: ActionType['DISMISS_TOAST']
+      type: 'DISMISS_TOAST'
       toastId?: ToasterToast['id']
     }
   | {
-      type: ActionType['REMOVE_TOAST']
+      type: 'REMOVE_TOAST'
       toastId?: ToasterToast['id']
     }
 
@@ -63,11 +54,7 @@ interface State {
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
 const addToRemoveQueue = (toastId: string) => {
-  // TODO: REFACTOR - A fila de remoção executa efeito colateral dentro do reducer, misturando estado puro com comportamento de tempo.
-  // Evita registrar timeout duplicado para o mesmo toast.
-  if (toastTimeouts.has(toastId)) {
-    return
-  }
+  if (toastTimeouts.has(toastId)) return
 
   const timeout = setTimeout(() => {
     toastTimeouts.delete(toastId)
@@ -81,8 +68,6 @@ const addToRemoveQueue = (toastId: string) => {
 }
 
 export const reducer = (state: State, action: Action): State => {
-  // TODO: REFACTOR - O estado global de toasts mistura apresentação, remoção automática e listeners, tornando a lógica difícil de testar e evoluir.
-  // Redutor central: adiciona, atualiza, fecha e remove toasts.
   switch (action.type) {
     case 'ADD_TOAST':
       return {
@@ -98,23 +83,11 @@ export const reducer = (state: State, action: Action): State => {
         ),
       }
 
-    case 'DISMISS_TOAST': {
-      const { toastId } = action
-
-      // ! Side effects ! - This could be extracted into a dismissToast() action,
-      // but I'll keep it here for simplicity
-      if (toastId) {
-        addToRemoveQueue(toastId)
-      } else {
-        state.toasts.forEach((toast) => {
-          addToRemoveQueue(toast.id)
-        })
-      }
-
+    case 'DISMISS_TOAST':
       return {
         ...state,
         toasts: state.toasts.map((t) =>
-          t.id === toastId || toastId === undefined
+          t.id === action.toastId || action.toastId === undefined
             ? {
                 ...t,
                 open: false,
@@ -122,7 +95,6 @@ export const reducer = (state: State, action: Action): State => {
             : t,
         ),
       }
-    }
     case 'REMOVE_TOAST':
       if (action.toastId === undefined) {
         return {
@@ -141,9 +113,16 @@ const listeners: Array<(state: State) => void> = []
 
 let memoryState: State = { toasts: [] }
 
+const getDismissedToastIds = (state: State, toastId?: string) =>
+  toastId ? [toastId] : state.toasts.map((toast) => toast.id)
+
 function dispatch(action: Action) {
-  // Atualiza estado em memoria e notifica todos os componentes assinantes.
+  const toastIdsToRemove = action.type === 'DISMISS_TOAST'
+    ? getDismissedToastIds(memoryState, action.toastId)
+    : []
+
   memoryState = reducer(memoryState, action)
+  toastIdsToRemove.forEach(addToRemoveQueue)
   listeners.forEach((listener) => {
     listener(memoryState)
   })
@@ -152,7 +131,6 @@ function dispatch(action: Action) {
 type Toast = Omit<ToasterToast, 'id'>
 
 function toast({ ...props }: Toast) {
-  // API imperativa para disparar toast de qualquer ponto da aplicacao.
   const id = genId()
 
   const update = (props: ToasterToast) =>
@@ -182,18 +160,15 @@ function toast({ ...props }: Toast) {
 }
 
 function useToast() {
-  // Hook que sincroniza estado local do componente com o estado global em memoria.
   const [state, setState] = React.useState<State>(memoryState)
 
   React.useEffect(() => {
     listeners.push(setState)
     return () => {
       const index = listeners.indexOf(setState)
-      if (index > -1) {
-        listeners.splice(index, 1)
-      }
+      if (index > -1) listeners.splice(index, 1)
     }
-  }, [state])
+  }, [])
 
   return {
     ...state,

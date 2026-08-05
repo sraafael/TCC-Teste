@@ -1,9 +1,15 @@
-<!--
-  Arquivo: back-end/templates/base.html
-  Area: Back-end Flask
-  Funcao: Arquivo de suporte do projeto.
-  Onde fica: /back-end/templates/base.html
--->
-<!-- TODO: REFACTOR - A navegação está hardcoded e acoplada a rotas específicas, dificultando evolução de estrutura e middleware. -->
-<li><a href="/">Dashboard</a></li>
-<li><a href="/lista-alunos">Alunos</a></li>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Studio Bio Fitness{% endblock %}</title>
+</head>
+<body>
+    <nav class="navbar" aria-label="Navegação principal">
+        <a href="/">Dashboard</a>
+        <a href="/lista-alunos">Alunos</a>
+    </nav>
+    <main>{% block content %}{% endblock %}</main>
+</body>
+</html>

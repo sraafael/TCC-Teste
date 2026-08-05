@@ -7,10 +7,15 @@ def register_blueprints(app):
     from .finance import finance_bp
     from .dashboard import dashboard_bp
 
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(alunos_bp)
-    app.register_blueprint(professores_bp)
-    app.register_blueprint(planos_bp)
-    app.register_blueprint(agenda_bp)
-    app.register_blueprint(finance_bp)
-    app.register_blueprint(dashboard_bp)
+    blueprints = (
+        auth_bp,
+        alunos_bp,
+        professores_bp,
+        planos_bp,
+        agenda_bp,
+        finance_bp,
+        dashboard_bp,
+    )
+
+    for blueprint in blueprints:
+        app.register_blueprint(blueprint)

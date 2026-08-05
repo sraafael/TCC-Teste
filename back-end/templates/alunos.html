@@ -1,17 +1,12 @@
-<!--
-  Arquivo: back-end/templates/alunos.html
-  Area: Back-end Flask
-  Funcao: Arquivo de suporte do projeto.
-  Onde fica: /back-end/templates/alunos.html
--->
 {% extends "base.html" %}
 
+{% block title %}Lista de Alunos{% endblock %}
+
 {% block content %}
-<!-- Tabela renderizada no servidor e populada via fetch na carga da pagina. -->
 <div class="container mt-4">
     <h2>Lista de Alunos</h2>
     <input type="text" id="search" placeholder="Buscar alunos..." class="form-control mb-3">
-    
+
     <table class="table table-striped table-bordered">
         <thead class="thead-dark">
             <tr>
@@ -20,42 +15,53 @@
                 <th>Ações</th>
             </tr>
         </thead>
-        <tbody id="alunoList">
-            </tbody>
+        <tbody id="alunoList"></tbody>
     </table>
 </div>
 
 <script>
-    <!-- TODO: REFACTOR - A view monta a tabela diretamente a partir da API, acoplando apresentação e fluxo de dados no template. -->
-    // Busca alunos da API e reconstrói o tbody com os dados mais recentes.
+    function getStudentItems(payload) {
+        if (Array.isArray(payload)) return payload;
+        return Array.isArray(payload.data) ? payload.data : [];
+    }
+
+    function createStudentRow(aluno) {
+        const row = document.createElement('tr');
+        const id = document.createElement('td');
+        const name = document.createElement('td');
+        const actions = document.createElement('td');
+        const removeButton = document.createElement('button');
+
+        id.textContent = aluno.id;
+        name.textContent = aluno.nome;
+        removeButton.className = 'btn btn-sm btn-danger';
+        removeButton.textContent = 'Remover';
+        removeButton.addEventListener('click', () => deletarAluno(aluno.id));
+
+        actions.appendChild(removeButton);
+        row.append(id, name, actions);
+        return row;
+    }
+
     function carregarAlunos() {
         fetch('/alunos')
-            .then(res => res.json())
-            .then(data => {
+            .then((response) => response.json())
+            .then((payload) => {
                 const tbody = document.getElementById('alunoList');
-                tbody.innerHTML = ''; // Limpa a tabela
-                data.forEach(aluno => {
-                    tbody.innerHTML += `
-                        <tr>
-                            <td>${aluno.id}</td>
-                            <td>${aluno.nome}</td>
-                            <td>
-                                <button class="btn btn-sm btn-danger" onclick="deletarAluno(${aluno.id})">Remover</button>
-                            </td>
-                        </tr>`;
-                });
-            });
+                const students = getStudentItems(payload);
+
+                tbody.replaceChildren(...students.map(createStudentRow));
+            })
+            .catch((error) => console.error('Erro ao carregar alunos:', error));
     }
 
-    // Chama endpoint de exclusao e recarrega a listagem ao concluir.
     function deletarAluno(id) {
-        if(confirm("Deseja realmente remover?")) {
-            fetch(`/alunos/${id}`, { method: 'DELETE' })
-                .then(() => carregarAlunos());
-        }
+        if (!confirm('Deseja realmente remover?')) return;
+
+        fetch(`/alunos/${id}`, { method: 'DELETE' })
+            .then(() => carregarAlunos());
     }
 
-    // Inicializa a carga
     document.addEventListener('DOMContentLoaded', carregarAlunos);
 </script>
 {% endblock %}

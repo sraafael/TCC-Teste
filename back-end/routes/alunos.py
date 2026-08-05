@@ -6,6 +6,7 @@ from extensions import db
 from validators import validate_request
 from schemas import AlunoCreate, AlunoUpdate
 from sqlalchemy import or_
+from ._helpers import get_pagination_arguments, get_request_payload, serialize_pagination
 
 alunos_bp = Blueprint('alunos', __name__)
 
@@ -13,18 +14,12 @@ alunos_bp = Blueprint('alunos', __name__)
 @alunos_bp.route('/api/cadastros/alunos', methods=['GET', 'POST'])
 @validate_request(AlunoCreate, methods=('POST',))
 def cadastros_alunos():
-    // TODO: REFACTOR - A rota trata consulta, criação e formatos alternativos de payload em um mesmo endpoint, tornando a regra de negócio difícil de evoluir.
     if request.method == 'GET':
         # Query params: page, limit, q (search), status, plano
         q = (request.args.get('q') or '').strip()
         status = request.args.get('status')
         plano = request.args.get('plano')
-        try:
-            page = int(request.args.get('page', 1))
-            per_page = int(request.args.get('limit', 20))
-        except Exception:
-            page = 1
-            per_page = 20
+        page, per_page = get_pagination_arguments()
 
         query = AlunoCadastro.query
         if q:
@@ -37,10 +32,10 @@ def cadastros_alunos():
 
         pagination = query.order_by(AlunoCadastro.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
         items = [utils.serialize_aluno_cadastro(aluno) for aluno in pagination.items]
-        meta = {'total': pagination.total, 'pages': pagination.pages, 'page': pagination.page, 'per_page': pagination.per_page}
+        meta = serialize_pagination(pagination)
         return jsonify({'success': True, 'data': items, 'meta': meta})
 
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    payload = get_request_payload()
     response_body, status_code = utils.persist_aluno_cadastro(payload)
     return jsonify(response_body), status_code
 
@@ -50,12 +45,7 @@ def cadastros_alunos():
 def alunos():
     if request.method == 'GET':
         q = (request.args.get('q') or '').strip()
-        try:
-            page = int(request.args.get('page', 1))
-            per_page = int(request.args.get('limit', 20))
-        except Exception:
-            page = 1
-            per_page = 20
+        page, per_page = get_pagination_arguments()
 
         query = AlunoCadastro.query
         if q:
@@ -64,15 +54,15 @@ def alunos():
         pagination = query.order_by(AlunoCadastro.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
         if pagination.items:
             items = [{'id': aluno.id, 'nome': aluno.nome} for aluno in pagination.items]
-            meta = {'total': pagination.total, 'pages': pagination.pages, 'page': pagination.page, 'per_page': pagination.per_page}
+            meta = serialize_pagination(pagination)
             return jsonify({'success': True, 'data': items, 'meta': meta})
 
         fallback = Aluno.query.order_by(Aluno.id.desc()).paginate(page=page, per_page=per_page, error_out=False)
         items = [{'id': aluno.id, 'nome': aluno.nome} for aluno in fallback.items]
-        meta = {'total': fallback.total, 'pages': fallback.pages, 'page': fallback.page, 'per_page': fallback.per_page}
+        meta = serialize_pagination(fallback)
         return jsonify({'success': True, 'data': items, 'meta': meta})
 
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    payload = get_request_payload()
     response_body, status_code = utils.persist_aluno_cadastro(payload)
     return jsonify(response_body), status_code
 
@@ -80,7 +70,7 @@ def alunos():
 @alunos_bp.route('/alunos/adicionar', methods=['POST'])
 @validate_request(AlunoCreate, methods=('POST',))
 def adicionar_aluno_legacy():
-    payload = request.form.to_dict() or request.get_json(silent=True) or {}
+    payload = get_request_payload(prefer_form=True)
     response_body, status_code = utils.persist_aluno_cadastro(payload)
     return jsonify(response_body), status_code
 
@@ -88,13 +78,12 @@ def adicionar_aluno_legacy():
 @alunos_bp.route('/api/cadastros/alunos/<cpf>', methods=['PUT'])
 @validate_request(AlunoUpdate, methods=('PUT',), partial=True)
 def atualizar_aluno(cpf):
-    // TODO: REFACTOR - A atualização de aluno faz transformações de domínio diretamente na rota, misturando persistência e regras de negócio.
     normalized_cpf = utils.normalize_cpf(cpf)
     aluno = AlunoCadastro.query.filter_by(cpf=normalized_cpf).first()
     if not aluno:
         return jsonify({'error': 'Aluno nao encontrado.'}), 404
 
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    payload = get_request_payload()
 
     try:
         if 'nome' in payload:

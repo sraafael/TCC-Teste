@@ -1,46 +1,35 @@
-<!--
-  Arquivo: back-end/templates/adicionar_aluno.html
-  Area: Back-end Flask
-  Funcao: Arquivo de suporte do projeto.
-  Onde fica: /back-end/templates/adicionar_aluno.html
--->
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adicionar Aluno</title>
-</head>
-<body>
-    <!-- TODO: REFACTOR - O formulário concentra regras de cadastro em uma view fixa, sem separar validação e fluxo de submissão. -->
-    <h1>Adicionar Novo Aluno</h1>
-    <form action="/alunos" method="POST">
-        <label for="nome">Nome:</label>
-        <input type="text" id="nome" name="nome" required><br><br>
+{% extends "base.html" %}
 
-        <label for="email">Email:</label>
-        <input type="email" id="email" name="email" required><br><br>
+{% block title %}Adicionar Aluno{% endblock %}
 
-        <label for="telefone">Telefone:</label>
-        <input type="text" id="telefone" name="telefone" required><br><br>
+{% block content %}
+<h1>Adicionar Novo Aluno</h1>
+<form action="/alunos" method="POST">
+    <label for="nome">Nome:</label>
+    <input type="text" id="nome" name="nome" required><br><br>
 
-        <label for="cpf">CPF:</label>
-        <input type="text" id="cpf" name="cpf" required><br><br>
+    <label for="email">Email:</label>
+    <input type="email" id="email" name="email" required><br><br>
 
-        <label for="idade">Idade:</label>
-        <input type="number" id="idade" name="idade" min="12" max="120" required><br><br>
+    <label for="telefone">Telefone:</label>
+    <input type="text" id="telefone" name="telefone" required><br><br>
 
-        <label for="peso">Peso (kg):</label>
-        <input type="number" id="peso" name="peso" min="20" max="400" step="0.1" required><br><br>
+    <label for="cpf">CPF:</label>
+    <input type="text" id="cpf" name="cpf" required><br><br>
 
-        <label for="plano">Plano:</label>
-        <select id="plano" name="plano" required>
-            <option value="basico">Básico</option>
-            <option value="premium">Premium</option>
-            <option value="vip">VIP</option>
-        </select><br><br>
+    <label for="idade">Idade:</label>
+    <input type="number" id="idade" name="idade" min="12" max="120" required><br><br>
 
-        <button type="submit">Adicionar</button>
-    </form>
-</body>
-</html>
+    <label for="peso">Peso (kg):</label>
+    <input type="number" id="peso" name="peso" min="20" max="400" step="0.1" required><br><br>
+
+    <label for="plano">Plano:</label>
+    <select id="plano" name="plano" required>
+        <option value="basico">Básico</option>
+        <option value="premium">Premium</option>
+        <option value="vip">VIP</option>
+    </select><br><br>
+
+    <button type="submit">Adicionar</button>
+</form>
+{% endblock %}

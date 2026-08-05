@@ -47,14 +47,11 @@ import {
   Mail,
   CreditCard,
   Edit,
-  Trash2,
   XCircle,
   Tag,
   MapPin,
   ArrowLeftRight,
   MessageCircle,
-  Wrench,
-  Package,
   ClipboardCheck,
   UserX,
 } from "lucide-react"
@@ -77,6 +74,15 @@ type ProfessorStatus = "ativo" | "ferias" | "inativo"
 type FinanceEntryType = "receita" | "despesa"
 type ReceiptStatus = "pago" | "pendente" | "atrasado"
 type ClassProfessorStatus = "confirmado" | "presente"
+
+const STUDENTS_PAGE_SIZE = 10
+
+const PROFESSOR_FILTERS: Record<ProfessorFilter, (professor: Professor) => boolean> = {
+  todos: () => true,
+  ativo: ({ status }) => status === "ativo",
+  ferias: ({ status }) => status === "ferias",
+  inativo: ({ status }) => status === "inativo",
+}
 
 interface Student {
   name: string
@@ -387,7 +393,7 @@ const EMPTY_AGENDA_CLASS_FORM: AgendaClassForm = {
   room: "",
   capacity: "",
 }
-
+// refatorar
 const PROFESSOR_SPECIALITIES = ["Musculacao", "Funcional", "Crossfit", "Personal", "Pilates", "Natacao", "HIIT", "Yoga", "Hidroginastica"]
 const PLAN_BENEFIT_OPTIONS = [
   "Acesso livre a musculacao",
@@ -810,43 +816,17 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   }, [])
 
   // Filtro combinado por busca textual + situacao financeira/atividade.
-  const normalizedSearchQuery = searchQuery.trim().toLowerCase()
-  const normalizedSearchDigits = normalizeDigits(searchQuery)
-  const matchesSearch = ({ name, cpf }: { name: string; cpf: string }) =>
-    !normalizedSearchQuery
-    || name.toLowerCase().includes(normalizedSearchQuery)
-    || (normalizedSearchDigits !== "" && normalizeDigits(cpf).includes(normalizedSearchDigits))
-
-  const studentMatchesFilter: Record<StudentFilter, (student: Student) => boolean> = {
-    todos: () => true,
-    "em-dia": ({ payment, status }) => payment === "em-dia" && status === "ativo",
-    atrasado: ({ payment }) => payment === "atrasado",
-    inativo: ({ status }) => status === "inativo",
-  }
-
-  const professorMatchesFilter: Record<ProfessorFilter, (professor: Professor) => boolean> = {
-    todos: () => true,
-    ativo: ({ status }) => status === "ativo",
-    ferias: ({ status }) => status === "ferias",
-    inativo: ({ status }) => status === "inativo",
-  }
-
-  const filteredStudents = allStudents.filter((student) => matchesSearch(student) && studentMatchesFilter[studentFilter](student))
-  const filteredProfessors = allProfessors.filter((professor) => matchesSearch(professor) && professorMatchesFilter[professorFilter](professor))
+  const filteredProfessors = allProfessors.filter((professor) => PROFESSOR_FILTERS[professorFilter](professor))
 
   // Paginação para listagem de alunos (consome API paginada)
-  const STUDENTS_PAGE_SIZE = 10
   const studentsEndpoint = `/api/cadastros/alunos${searchQuery || studentFilter !== "todos" ? `?search=${encodeURIComponent(searchQuery)}&filter=${encodeURIComponent(studentFilter)}` : ""}`
   const {
     items: paginatedStudents,
     page: studentsPage,
-    pageSize: studentsQueryPageSize,
     total: studentsTotal,
-    hasMore: studentsHasMore,
     nextPage: studentsNextPage,
     prevPage: studentsPrevPage,
     goToPage: studentsGoToPage,
-    refresh: refreshStudents,
     loading: studentsLoading,
   } = usePaginatedData<Student>(studentsEndpoint, { pageSize: STUDENTS_PAGE_SIZE })
 
@@ -1431,37 +1411,6 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     }
   }
 
-  const handleRemovePlan = async (planId: string) => {
-    setPlansError("")
-    const plan = plans.find((item) => item.id === planId)
-    const activeStudentsUsingPlan = plan ? plan.activeStudentsCount ?? countActiveStudentsForPlan(plan.name) : 0
-
-    if (activeStudentsUsingPlan > 0) {
-      setPlansError(`O plano ainda esta vinculado a ${activeStudentsUsingPlan} aluno(s) ativo(s). Realoque esses alunos antes de remover.`)
-      return
-    }
-
-    try {
-      const { response, data } = await requestJson<{ error?: string }>(
-        `${API_BASE_URL}/api/planos/${planId}`,
-        jsonRequest("DELETE")
-      )
-
-      if (!response.ok) {
-        setPlansError(getErrorMessage(data, "Nao foi possivel remover o plano."))
-        return
-      }
-
-      setPlans((prev) => prev.filter((plan) => plan.id !== planId))
-      if (editingPlanId === planId) {
-        setShowAddPlanDialog(false)
-        resetPlanDialog()
-      }
-    } catch {
-      setPlansError("Nao foi possivel conectar com a API de planos.")
-    }
-  }
-
   // Abre edicao com snapshot do aluno atual para evitar mutacao direta.
   const openEditStudentDialog = () => {
     if (!selectedStudent) return
@@ -1643,7 +1592,7 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
     }
 
     setSelectedAgendaClassForAction(null)
-    setAgendaClassForm((prev) => ({ ...EMPTY_AGENDA_CLASS_FORM, professor: professor.name }))
+    setAgendaClassForm({ ...EMPTY_AGENDA_CLASS_FORM, professor: professor.name })
     setAgendaClassError("")
     setAgendaDialog("criar-turma")
   }
@@ -2237,7 +2186,6 @@ export function DashboardAdmin({ onLogout }: DashboardAdminProps) {
   // Consolida os cards em dados derivados para evitar estados duplicados.
   const activeStudentsCount = allStudents.filter((student) => student.status === "ativo").length
   const activeProfessorsCount = activeProfessorsForAgenda.length
-  const studentsWithoutClassCount = allStudents.filter((student) => getStudentAssignedClasses(student).length === 0).length
   const totalAgendaCapacity = agendaToday.reduce((sum, agendaClass) => sum + agendaClass.capacity, 0)
   const totalOccupiedSpots = agendaToday.reduce((sum, agendaClass) => sum + agendaClass.students.length, 0)
   const occupancyRate = getPercent(totalOccupiedSpots, totalAgendaCapacity)

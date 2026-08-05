@@ -1,33 +1,22 @@
-<!--
-  Arquivo: back-end/templates/adicionar_plano.html
-  Area: Back-end Flask
-  Funcao: Arquivo de suporte do projeto.
-  Onde fica: /back-end/templates/adicionar_plano.html
--->
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adicionar Plano</title>
-</head>
-<body>
-    <!-- TODO: REFACTOR - A tela de plano mistura criação e edição em um único formulário, mascarando regras de negócio específicas. -->
-    <h1>Adicionar ou Editar Plano</h1>
-    <form action="/plano" method="post">
-        <label for="nome">Nome:</label><br>
-        <input type="text" id="nome" name="nome" required><br><br>
+{% extends "base.html" %}
 
-        <label for="descricao">Descrição:</label><br>
-        <textarea id="descricao" name="descricao" required></textarea><br><br>
+{% block title %}Adicionar Plano{% endblock %}
 
-        <label for="preco">Preço:</label><br>
-        <input type="number" id="preco" name="preco" step="0.01" required><br><br>
+{% block content %}
+<h1>Adicionar ou Editar Plano</h1>
+<form action="/plano" method="post">
+    <label for="nome">Nome:</label><br>
+    <input type="text" id="nome" name="nome" required><br><br>
 
-        <label for="duracao_meses">Duração (meses):</label><br>
-        <input type="number" id="duracao_meses" name="duracao_meses" required><br><br>
+    <label for="descricao">Descrição:</label><br>
+    <textarea id="descricao" name="descricao" required></textarea><br><br>
 
-        <input type="submit" value="Salvar">
-    </form>
-</body>
-</html>
+    <label for="preco">Preço:</label><br>
+    <input type="number" id="preco" name="preco" step="0.01" required><br><br>
+
+    <label for="duracao_meses">Duração (meses):</label><br>
+    <input type="number" id="duracao_meses" name="duracao_meses" required><br><br>
+
+    <input type="submit" value="Salvar">
+</form>
+{% endblock %}

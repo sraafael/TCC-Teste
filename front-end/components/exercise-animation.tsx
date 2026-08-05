@@ -4,6 +4,8 @@
  * Funcao: Renderiza animacoes SVG de exercicios para apoio visual dos treinos.
  * Onde fica: /front-end/components/exercise-animation.tsx
  */
+
+// refatorar para Avatar3D https://github.com/pixiv/three-vrm?tab=readme-ov-file
 "use client"
 
 import { cn } from "@/lib/utils"
@@ -90,10 +92,10 @@ function Avatar3D({ type }: { type: string }) {
     </g>
   )
 
-  const Torso = ({ x1, y1, x2, y2, width = 16 }: { x1: number; y1: number; x2: number; y2: number; width?: number }) => (
+  const Torso = ({ x, y1, y2, width = 16 }: { x: number; y1: number; y2: number; width?: number }) => (
     <g>
       <rect
-        x={x1 - width / 2}
+        x={x - width / 2}
         y={y1}
         width={width}
         height={y2 - y1}
@@ -177,7 +179,7 @@ function Avatar3D({ type }: { type: string }) {
           <rect x="50" y="130" width="8" height="30" rx="3" fill="url(#equipGrad)" />
           <rect x="142" y="130" width="8" height="30" rx="3" fill="url(#equipGrad)" />
           {/* Body lying */}
-          <Torso x1={100} y1={105} x2={100} y2={120} width={18} />
+          <Torso x={100} y1={105} y2={120} width={18} />
           {/* Head */}
           <g>
             <circle cx={75} cy={110} r={10} fill="url(#skinGrad)" filter="url(#shadow)" />
@@ -212,7 +214,7 @@ function Avatar3D({ type }: { type: string }) {
       return (
         <g>
           <Head cx={100} cy={42} />
-          <Torso x1={100} y1={54} x2={100} y2={110} />
+          <Torso x={100} y1={54} y2={110} />
           <Limb x1={100} y1={110} x2={82} y2={155} width={6} />
           <Limb x1={100} y1={110} x2={118} y2={155} width={6} />
           <Limb x1={82} y1={155} x2={76} y2={170} width={5} />
@@ -321,7 +323,7 @@ function Avatar3D({ type }: { type: string }) {
           {/* Head */}
           <Head cx={100} cy={58} />
           {/* Body seated */}
-          <Torso x1={100} y1={70} x2={100} y2={118} />
+          <Torso x={100} y1={70} y2={118} />
           {/* Seat */}
           <rect x={80} y={118} width={40} height={8} rx={4} fill="url(#equipGrad)" />
           {/* Legs */}
@@ -352,7 +354,7 @@ function Avatar3D({ type }: { type: string }) {
       return (
         <g>
           <Head cx={100} cy={38} />
-          <Torso x1={100} y1={50} x2={100} y2={110} />
+          <Torso x={100} y1={50} y2={110} />
           <Limb x1={100} y1={110} x2={85} y2={158} width={6} />
           <Limb x1={100} y1={110} x2={115} y2={158} width={6} />
           <Limb x1={85} y1={158} x2={78} y2={170} width={5} />
@@ -399,7 +401,7 @@ function Avatar3D({ type }: { type: string }) {
           {/* Cable machine */}
           <rect x={95} y={8} width={10} height={18} rx={3} fill="url(#equipGrad)" />
           <Head cx={100} cy={42} />
-          <Torso x1={100} y1={54} x2={100} y2={110} />
+          <Torso x={100} y1={54} y2={110} />
           <Limb x1={100} y1={110} x2={85} y2={155} width={6} />
           <Limb x1={100} y1={110} x2={115} y2={155} width={6} />
           {/* Arms pushing down */}
@@ -426,7 +428,7 @@ function Avatar3D({ type }: { type: string }) {
             <Head cx={100} cy={38} r={12} />
             <animateTransform attributeName="transform" type="translate" values="0,0;0,-5;0,0" dur="1.8s" repeatCount="indefinite" />
           </g>
-          <Torso x1={100} y1={50} x2={100} y2={110} />
+          <Torso x={100} y1={50} y2={110} />
           <Limb x1={100} y1={110} x2={85} y2={155} width={6} />
           <Limb x1={100} y1={110} x2={115} y2={155} width={6} />
           {/* Arms pressing up */}
@@ -452,7 +454,7 @@ function Avatar3D({ type }: { type: string }) {
       return (
         <g>
           <Head cx={100} cy={38} />
-          <Torso x1={100} y1={50} x2={100} y2={110} />
+          <Torso x={100} y1={50} y2={110} />
           <Limb x1={100} y1={110} x2={85} y2={155} width={6} />
           <Limb x1={100} y1={110} x2={115} y2={155} width={6} />
           {/* Arms raising */}
@@ -633,7 +635,7 @@ function Avatar3D({ type }: { type: string }) {
           {/* Screen */}
           <rect x={115} y={42} width={18} height={12} rx={3} fill="oklch(0.40 0.15 145)" opacity={0.6} />
           <Head cx={90} cy={52} r={11} />
-          <Torso x1={90} y1={64} x2={90} y2={108} width={15} />
+          <Torso x={90} y1={64} y2={108} width={15} />
           {/* Arms swinging */}
           <Limb x1={84} y1={72} x2={72} y2={95} width={4}
             animate={[{ attr: "x2", values: "72;78;72", dur: "0.8s" }]} />
@@ -659,7 +661,7 @@ function Avatar3D({ type }: { type: string }) {
           <line x1={90} y1={80} x2={110} y2={80} stroke="url(#equipGrad)" strokeWidth={4} />
           {/* Person */}
           <Head cx={100} cy={52} r={11} />
-          <Torso x1={100} y1={64} x2={100} y2={95} width={14} />
+          <Torso x={100} y1={64} y2={95} width={14} />
           {/* Legs pedaling */}
           <Limb x1={96} y1={95} x2={80} y2={128} width={5}
             animate={[
@@ -741,7 +743,7 @@ function Avatar3D({ type }: { type: string }) {
             <Head cx={100} cy={44} r={12} />
             <animateTransform attributeName="transform" type="translate" values="0,0;0,18;0,0" dur="1.8s" repeatCount="indefinite" />
           </g>
-          <Torso x1={100} y1={56} x2={100} y2={100} />
+          <Torso x={100} y1={56} y2={100} />
           {/* Arms on bars */}
           <Limb x1={92} y1={65} x2={66} y2={82} width={5}
             animate={[{ attr: "y2", values: "82;82;82", dur: "1.8s" }]} />
@@ -779,7 +781,7 @@ function Avatar3D({ type }: { type: string }) {
       return (
         <g>
           <Head cx={100} cy={38} />
-          <Torso x1={100} y1={50} x2={100} y2={110} />
+          <Torso x={100} y1={50} y2={110} />
           <Limb x1={92} y1={60} x2={68} y2={88} width={5} />
           <Limb x1={108} y1={60} x2={132} y2={88} width={5} />
           <Limb x1={100} y1={110} x2={85} y2={158} width={6} />

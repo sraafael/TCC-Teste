@@ -2397,17 +2397,6 @@ if PydanticValidationError:
         return api_response({'message': 'Payload invalido.', 'errors': details}, success=False, status=400)
 
 
-# Handler para erros de validacao do pydantic (quando instalado)
-if PydanticValidationError:
-    @app.errorhandler(PydanticValidationError)
-    def handle_pydantic_validation(error):
-        try:
-            details = error.errors()
-        except Exception:
-            details = str(error)
-        return api_response({'message': 'Payload invalido.', 'errors': details}, success=False, status=400)
-
-
 @app.after_request
 def wrap_json_response(response):
     # Padroniza respostas JSON para o formato { success: bool, data|error: ... }

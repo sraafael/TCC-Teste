@@ -14,15 +14,22 @@ except Exception:
     class InvalidTokenError(Exception):
         pass
 
-# TODO: REFACTOR - A configuração de JWT está acoplada a valores globais de ambiente e fallback local, o que pode mascarar políticas distintas por ambiente.
-# Config
 SECRET = os.getenv('JWT_SECRET_KEY') or os.getenv('SECRET_KEY', 'fitpro-dev-key')
 ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
-ACCESS_EXPIRES = int(os.getenv('JWT_ACCESS_EXPIRES', '3600'))  # seconds
+ACCESS_EXPIRES = int(os.getenv('JWT_ACCESS_EXPIRES', '3600'))
+
+
+def get_bearer_token(authorization_header):
+    if not authorization_header:
+        return None
+
+    parts = authorization_header.split()
+    if len(parts) != 2 or parts[0].lower() != 'bearer':
+        return None
+    return parts[1]
 
 
 def create_access_token(identity: dict, expires_delta: int | None = None) -> str:
-    # TODO: REFACTOR - A identidade do usuário é codificada diretamente no token sem uma estratégia explícita de claims e escopo.
     """Cria um JWT com `identity` embutido e claim `exp`.
 
     identity: dicionario com identificadores (ex: {'cpf': '...','role':'admin'})
@@ -53,28 +60,26 @@ def decode_access_token(token: str) -> dict:
 
 def jwt_required(fn):
     """Decorator simples para validar Authorization: Bearer <token> e expirar token."""
-    # TODO: REFACTOR - O decorator mistura autenticação, resposta HTTP e tratamento de erro em um só ponto, dificultando composição com outras políticas.
 
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        auth = request.headers.get('Authorization')
-        if not auth:
+        authorization_header = request.headers.get('Authorization')
+        if not authorization_header:
             return jsonify({'error': 'Authorization header missing'}), 401
 
-        parts = auth.split()
-        if len(parts) != 2 or parts[0].lower() != 'bearer':
+        token = get_bearer_token(authorization_header)
+        if not token:
             return jsonify({'error': 'Invalid authorization header.'}), 401
 
-        token = parts[1]
         try:
-            payload = decode_access_token(token)
-            g.jwt_payload = payload
-            return fn(*args, **kwargs)
+            g.jwt_payload = decode_access_token(token)
         except ExpiredSignatureError:
             return jsonify({'error': 'Token expirado.'}), 401
         except InvalidTokenError:
             return jsonify({'error': 'Token invalido.'}), 401
         except Exception:
             return jsonify({'error': 'Token invalido.'}), 401
+
+        return fn(*args, **kwargs)
 
     return wrapper
